@@ -32,6 +32,16 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+for tool in aws ssh scp curl; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "error: '$tool' was not found on PATH. This script needs aws-cli, ssh, scp, and curl to drive a real deploy." >&2
+    if [ "$tool" = "aws" ]; then
+      echo "install: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html, then 'aws configure'." >&2
+    fi
+    exit 1
+  fi
+done
+
 # No explicit --instance-ip override -- ask the capacity-aware provisioner which instance to target
 # (it auto-launches fresh capacity if nothing existing has room for this app).
 if [ -z "$INSTANCE_IP" ]; then

@@ -10,6 +10,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 INSTANCES_JSON="$SCRIPT_DIR/instances.json"
 
+for tool in aws ssh; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "error: '$tool' was not found on PATH. The provisioner needs aws-cli and ssh to manage EC2 capacity." >&2
+    if [ "$tool" = "aws" ]; then
+      echo "install: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html, then 'aws configure'." >&2
+    fi
+    exit 1
+  fi
+done
+
 # Launch configuration -- must match the fleet's existing instance(s) exactly so a freshly launched
 # one is a genuine equivalent, not a divergent one-off.
 REGION="us-east-1"
