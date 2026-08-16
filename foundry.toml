@@ -8,6 +8,7 @@ solc_version = "0.8.26"
 fs_permissions = [
     { access = "read", path = "src/vendor/nitro-validator" },
     { access = "read", path = "src/vendor/nitro-validator/.work-calldata" },
+    { access = "read", path = ".work-calldata" },
 ]
 
 [fmt]
