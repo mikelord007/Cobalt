@@ -11,7 +11,18 @@
       "ssh_user": "ec2-user",
       "physical_cores": 2,
       "cores_reserved_for_parent": 1,
-      "enclaves": []
+      "enclaves": [
+        {
+          "app": "ping",
+          "cores": 1,
+          "enclave_id": "i-08e31698c56bf0ef5-enc1a0095d8bc67ac5",
+          "cpu_ids": [
+            1,
+            3
+          ],
+          "parent_port": 3000
+        }
+      ]
     }
   ]
 }

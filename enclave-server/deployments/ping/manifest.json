@@ -1,0 +1,13 @@
+{
+  "app": "ping",
+  "pcrs": {
+    "pcr0": "b4231239879ca56efc89f7d0ea706cb1c78848ea37b9fda7ee87878c029d11121fc8e64c6b8174b19f5402d95d5d6fdf",
+    "pcr1": "4b4d5b3661b3efc12920900c80e126e4ce783c522de6c02a2a5bf7af3a2b9327b86776f188e4be1c1c404a129dbda493",
+    "pcr2": "1bd0207ec970a7b2b0fff97c319e4d768960f36ff8e88a39df92ea45a0517d9c3a616045bb09aaa0a91663297fcf287e"
+  },
+  "attestation_path": "enclave-server/deployments/ping/attestation.json",
+  "eth_address": "0x62c83130b2093097c7d0217aaa05476cec734685",
+  "parent_port": 3000,
+  "enclave_cid": 17,
+  "instance": "98.81.233.100"
+}
