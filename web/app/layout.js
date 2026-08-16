@@ -3,9 +3,13 @@ import "./globals.css";
 import SiteNav from "./components/SiteNav";
 
 export const metadata = {
-  title: "Cobalt — Verifiable Off-Chain Compute",
+  title: "Cobalt — TEE infrastructure for Monad",
   description:
-    "Cobalt runs application logic inside AWS Nitro Enclaves and verifies the output on Monad. Hardware-enforced correctness, operator-trusted liveness.",
+    "Deploy your app into an AWS Nitro Enclave with one command. Monad verifies exactly which code ran. Live on Monad testnet.",
+  openGraph: {
+    title: "Cobalt — TEEs on Monad, in one command",
+    description: "Your code runs where no one can see it. Monad verifies which code ran.",
+  },
 };
 
 // Light is the default theme (see globals.css :root). This runs before hydration/paint so a

@@ -3,9 +3,13 @@ import InstallCommand from "./components/InstallCommand";
 import "./landing.css";
 
 export const metadata = {
-  title: "Cobalt — Verifiable Off-Chain Compute",
+  title: "Cobalt — TEE infrastructure for Monad",
   description:
-    "Cobalt runs application logic inside AWS Nitro Enclaves and verifies the output on Monad. Hardware-enforced correctness, operator-trusted liveness.",
+    "Deploy your app into an AWS Nitro Enclave with one command. Monad verifies exactly which code ran. Live on Monad testnet.",
+  openGraph: {
+    title: "Cobalt — TEEs on Monad, in one command",
+    description: "Your code runs where no one can see it. Monad verifies which code ran.",
+  },
 };
 
 /**
@@ -20,14 +24,15 @@ export default function LandingPage() {
       {/* HERO */}
       <section className="hero">
         <div className="wrap">
-          <span className="eyebrow">Verifiable off-chain compute</span>
+          <span className="eyebrow">TEE infrastructure for Monad</span>
           <h1>
-            Your code runs where <span className="accent">no one can see it</span>. The chain
-            believes it anyway.
+            TEEs on Monad. <span className="accent">One command.</span>
           </h1>
           <p className="sub">
-            One command deploys your app into an AWS Nitro Enclave. Monad verifies which code
-            ran.
+            Your code runs where no one can see it — and Monad verifies exactly which code ran.
+          </p>
+          <p className="cta-note" style={{ color: "var(--accent)" }}>
+            Monad had no TEE infrastructure. Now it does.
           </p>
           <InstallCommand />
           <div className="cta-row">
@@ -40,7 +45,7 @@ export default function LandingPage() {
       <section className="terminal-section">
         <div className="wrap">
           <span className="eyebrow">Not a mockup</span>
-          <h2>One command. Real hardware.</h2>
+          <h2>One command. Real hardware. Real Monad.</h2>
           <div className="terminal">
             <div className="terminal-bar">
               <span className="dot"></span>
@@ -64,7 +69,10 @@ export default function LandingPage() {
               <span className="dim">    app live — awaiting signed results</span>
             </div>
           </div>
-          <p className="terminal-note">Real AWS attestation, not a simulation.</p>
+          <p className="terminal-note">
+            Real AWS Nitro attestation, verified by a Solidity contract on Monad. Not a
+            simulation.
+          </p>
         </div>
       </section>
 
@@ -72,32 +80,32 @@ export default function LandingPage() {
       <section className="steps">
         <div className="wrap">
           <span className="eyebrow">How it works</span>
-          <h2>From code to a result the chain will accept</h2>
+          <h2>From your code to a result Monad will accept</h2>
           <div className="steps-grid">
             <div className="step">
               <div className="num">01</div>
               <h3>Enclave attests</h3>
-              <p>Hardware signs the exact code measurement running inside.</p>
+              <p>AWS hardware signs the exact code measurement running inside.</p>
             </div>
             <div className="step">
               <div className="num">02</div>
-              <h3>Contract verifies</h3>
-              <p>A hinted P-384 construction makes the check fit on-chain.</p>
+              <h3>Monad verifies</h3>
+              <p>A hinted P-384 construction makes the check fit under Monad's 30M gas cap.</p>
             </div>
             <div className="step">
               <div className="num">03</div>
               <h3>Signer registered</h3>
-              <p>That key is now authorized for that code image, and no other.</p>
+              <p>That key is authorized for that code image on Monad, and no other.</p>
             </div>
             <div className="step">
               <div className="num">04</div>
               <h3>Results accepted</h3>
-              <p>The chain knows precisely what produced them.</p>
+              <p>Any Monad contract can now trust what the enclave signs.</p>
             </div>
           </div>
           <p className="steps-note">
-            Sealed-bid auctions, private order flow, confidential AI — anything where someone
-            currently has to be trusted not to peek.
+            Sealed-bid auctions, private order flow, confidential AI agents — anything on Monad
+            where someone currently has to be trusted not to peek.
           </p>
         </div>
       </section>
@@ -114,7 +122,7 @@ export default function LandingPage() {
             <br />
             The measurement changes.
             <br />
-            The registry rejects it.
+            Monad rejects it.
           </p>
           <div className="reject-example">
             <span className="x">✗</span>
@@ -128,9 +136,10 @@ export default function LandingPage() {
       {/* LIVE + CTA */}
       <section className="closing">
         <div className="wrap">
-          <h2>Running right now.</h2>
+          <h2>Running on Monad right now.</h2>
           <p className="sub">
-            Real enclave, real attestation, real Solidity registry, verified on Monad testnet.
+            Real enclave, real AWS attestation, real Solidity registry — deployed and verified on
+            Monad testnet.
           </p>
           <div className="cta-row">
             <Link className="btn btn-primary" href="/viewer">
@@ -143,7 +152,8 @@ export default function LandingPage() {
       <footer>
         <div className="wrap footer-inner">
           <span>
-            COBALT · Trusted for liveness, not <Link href="/trust">correctness</Link>.
+            COBALT — TEE infrastructure for Monad · Trusted for liveness, not{" "}
+            <Link href="/trust">correctness</Link>.
           </span>
         </div>
       </footer>
