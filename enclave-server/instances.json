@@ -1,28 +1,5 @@
 {
   "_comment": "Capacity-aware provisioner state (D3). Tracks known Nitro-capable EC2 instances and which physical cores their enclaves have claimed. Update via provisioner.sh, not by hand.",
   "_capacity_model": "Nitro Enclaves reserve whole physical cores (both hyperthread siblings together) -- never a fraction of one, and CPU0's core always stays with the parent OS. free_cores = physical_cores - cores_reserved_for_parent - sum(enclave.cores for enclave in enclaves). An instance can accept a new enclave only if free_cores >= the enclave's requested cores (minimum 1).",
-  "instances": [
-    {
-      "instance_id": "i-08e31698c56bf0ef5",
-      "region": "us-east-1",
-      "instance_type": "c6a.xlarge",
-      "public_ip": "98.81.233.100",
-      "ssh_key": "~/kp-1.pem",
-      "ssh_user": "ec2-user",
-      "physical_cores": 2,
-      "cores_reserved_for_parent": 1,
-      "enclaves": [
-        {
-          "app": "ping",
-          "cores": 1,
-          "enclave_id": "i-08e31698c56bf0ef5-enc1a0095d8bc67ac5",
-          "cpu_ids": [
-            1,
-            3
-          ],
-          "parent_port": 3000
-        }
-      ]
-    }
-  ]
+  "instances": []
 }
