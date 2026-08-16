@@ -16,7 +16,7 @@ APP="$1"
 shift
 
 SECRETS_PATH=""
-INSTANCE_IP="98.81.233.100"
+INSTANCE_IP=""
 SSH_USER="ec2-user"
 SSH_KEY="$HOME/kp-1.pem"
 
@@ -31,6 +31,14 @@ while [ $# -gt 0 ]; do
 done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# No explicit --instance-ip override -- ask the capacity-aware provisioner which instance to target
+# (it auto-launches fresh capacity if nothing existing has room for this app).
+if [ -z "$INSTANCE_IP" ]; then
+  echo "==> no --instance-ip given -- asking provisioner.sh for capacity for app '$APP'" >&2
+  INSTANCE_IP=$("$SCRIPT_DIR/provisioner.sh" acquire "$APP")
+  echo "==> provisioner assigned instance $INSTANCE_IP" >&2
+fi
 
 remote() {
   ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "$SSH_USER@$INSTANCE_IP" "$@"
