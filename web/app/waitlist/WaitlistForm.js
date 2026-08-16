@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 
-// TODO: replace with a real Formspree form ID from https://formspree.io
-// (create a free account, create a form, and swap this placeholder for the ID it gives you).
-const FORMSPREE_FORM_ID = "YOUR_FORM_ID";
+// Formspree form ID for the waitlist form: https://formspree.io/forms/xdenlpeo
+const FORMSPREE_FORM_ID = "xdenlpeo";
 const FORMSPREE_ENDPOINT = `https://formspree.io/f/${FORMSPREE_FORM_ID}`;
 
 const STATUS = {
