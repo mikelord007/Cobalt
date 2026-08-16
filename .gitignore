@@ -1,0 +1,21 @@
+# Build outputs
+out/
+cache/
+**/target/
+*.eif
+*.pcrs
+
+# Secrets and generated deploy state
+.secrets/
+.work/
+secrets.json
+user-data.sh
+trust-policy.json
+secrets-policy.json
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
