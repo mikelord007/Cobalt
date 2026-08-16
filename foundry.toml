@@ -1,0 +1,14 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+optimizer = true
+optimizer_runs = 10000
+solc_version = "0.8.26"
+fs_permissions = [{ access = "read", path = "src/vendor/nitro-validator" }]
+
+[fmt]
+ignore = ["src/vendor/nitro-validator/src/vendor/*.sol"]
+
+[rpc_endpoints]
+monad_testnet = "https://testnet-rpc.monad.xyz"
