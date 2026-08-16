@@ -93,7 +93,11 @@ else
       echo "==> build succeeded" >&2
       break
     fi
-    if remote "pgrep -f 'docker build.*ENCLAVE_APP=$APP'" >/dev/null 2>&1; then
+    # `make`'s recipe runs `docker build` and then `nitro-cli build-enclave` in sequence -- once
+    # the docker build step finishes, its process disappears even though make is still legitimately
+    # working on EIF packaging. Match on `make` itself (which spans the whole recipe) as well as
+    # the two known sub-steps, so the poll loop doesn't declare a false failure in that gap.
+    if remote "pgrep -f 'make ENCLAVE_APP=$APP' || pgrep -f 'docker build.*ENCLAVE_APP=$APP' || pgrep -f 'nitro-cli build-enclave'" >/dev/null 2>&1; then
       echo "==> still building ($ELAPSED s elapsed)" >&2
     else
       echo "==> build process is gone but out/nitro.pcrs was never produced -- last 60 lines of build.log:" >&2
