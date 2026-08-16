@@ -1,0 +1,6 @@
+{
+  "name": "ping",
+  "appId": "0x3160ada18c530e22627bf2c8c125e08ed5022b770f07efeb2c6ffaf6da861153",
+  "signerTTL": 2592000,
+  "sourceURI": "https://github.com/mikelord007/Cobalt"
+}

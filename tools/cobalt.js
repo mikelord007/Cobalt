@@ -1,0 +1,388 @@
+#!/usr/bin/env node
+// The Cobalt CLI: takes an app directory through attest -> createApp -> setAllowedImage ->
+// registerEnclave -> verify against an already-deployed, already-multi-tenant registry. This is
+// the platform's actual deliverable -- everything else exists to make this one command possible.
+"use strict";
+
+const fs = require("fs");
+const path = require("path");
+const { execFileSync } = require("child_process");
+
+const REPO_ROOT = path.resolve(__dirname, "..");
+const registrar = require(path.join(REPO_ROOT, "tools", "registrar.js"));
+
+const DEFAULT_RPC_URL = "https://testnet-rpc.monad.xyz";
+const DEFAULT_SIGNER_TTL = "2592000"; // 30 days
+
+function main() {
+  const [, , command, ...rest] = process.argv;
+  if (command === "deploy") return deployCommand(rest);
+  if (command === "status") return statusCommand(rest);
+  usage();
+  process.exit(command ? 1 : 0);
+}
+
+function usage() {
+  console.log(`usage:
+  node tools/cobalt.js deploy <app-dir> [options]
+  node tools/cobalt.js status <app-dir> [options]
+
+deploy options:
+  --app-name <name>            defaults to <app-dir>'s basename, or cobalt.json's "name"
+  --secrets <path>              path to a JSON secrets file (relative to app-dir), passed to the attest command
+  --attest-cmd "<cmd>"          overrides the default attest command (see below)
+  --manifest-path <path>        read the deploy manifest from here instead of the attest command's stdout
+  --attestation <hex|@file>     skip the attest step; provide the attestation directly
+  --pcr0 / --pcr1 / --pcr2 <hex>   required alongside --attestation (48 bytes each)
+  --eth-address <addr>          required alongside --attestation
+  --app-id <bytes32>            defaults to keccak256(app-name)
+  --signer-ttl <seconds>        defaults to 2592000 (30 days)
+  --source-commit <bytes32>     defaults to the zero hash
+  --source-uri <string>         defaults to ""
+  --registry / --cert-manager / --validator <addr>   default from deployments/monad-testnet.json
+  --rpc-url <url>                default from deployments/monad-testnet.json, else ${DEFAULT_RPC_URL}
+  --dry-run true                 stop after planning, don't broadcast anything
+
+Default attest command:
+  bash enclave-server/deploy_and_attest.sh <app-name> --secrets <resolved-secrets-path>
+
+Requires PRIVATE_KEY in the environment for every write step -- and even for --dry-run, since
+live eth_estimateGas needs a real sender to price Monad gas accurately.
+`);
+}
+
+// ---------------------------------------------------------------------------------------------
+// deploy
+// ---------------------------------------------------------------------------------------------
+
+async function deployCommand(args) {
+  if (args.length === 0 || args[0].startsWith("--")) {
+    console.error("error: <app-dir> is required");
+    usage();
+    process.exit(2);
+  }
+  const appDir = path.resolve(args[0]);
+  const options = parseFlags(args.slice(1));
+
+  if (!fs.existsSync(appDir)) {
+    console.error(`error: app directory does not exist: ${appDir}`);
+    process.exit(1);
+  }
+
+  const privateKey = requireEnv("PRIVATE_KEY");
+  const from = castWalletAddress(privateKey);
+
+  const config = loadAppConfig(appDir);
+  const chainDefaults = loadChainDefaults();
+
+  const appName = options["app-name"] || config.name || path.basename(appDir);
+  const appId = normalizeBytes32(options["app-id"] || config.appId || keccak256Hex(appName));
+  const signerTTL = options["signer-ttl"] || config.signerTTL || DEFAULT_SIGNER_TTL;
+  const sourceCommit = normalizeBytes32(options["source-commit"] || config.sourceCommit || "0x00");
+  const sourceURI = options["source-uri"] || config.sourceURI || "";
+
+  const rpcUrl = options["rpc-url"] || chainDefaults.rpcUrl || DEFAULT_RPC_URL;
+  const registry = registrar.validateAddress(options["registry"] || config.registry || chainDefaults.registry, "registry");
+  const certManager = registrar.validateAddress(options["cert-manager"] || config.certManager || chainDefaults.certManager, "cert-manager");
+  const validator = registrar.validateAddress(options["validator"] || config.validator || chainDefaults.validator, "validator");
+  const dryRun = options["dry-run"] === "true";
+
+  console.log(`==> deploying "${appName}" (appId ${appId})`);
+
+  // 1. attest
+  const manifest = await resolveManifest(appDir, options, appName);
+  console.log(`==> attestation ready: eth_address ${manifest.eth_address}`);
+  console.log(`    pcr0 ${manifest.pcrs.pcr0}`);
+  console.log(`    pcr1 ${manifest.pcrs.pcr1}`);
+  console.log(`    pcr2 ${manifest.pcrs.pcr2}`);
+
+  // 2. createApp
+  const exists = appExists(registry, appId, rpcUrl);
+  if (!exists) {
+    console.log("==> app does not exist on-chain yet, calling createApp");
+    if (!dryRun) {
+      castSend(registry, "createApp(bytes32,uint32,bytes32,string)", [appId, signerTTL, sourceCommit, sourceURI], rpcUrl, privateKey);
+    }
+  } else {
+    console.log("==> app already exists, skipping createApp");
+  }
+
+  // 3. setAllowedImage
+  // Guard: isImageAllowed compares allowedImageVersion[appId][hash] against apps[appId].configVersion
+  // -- for an app that doesn't exist yet, BOTH default to zero, so the raw view spuriously returns
+  // true. Only trust it once we know the app really exists (or we just created it above).
+  const pcrSetHash = registrar.computePcrSetHash(
+    registrar.decodeFixedHexBuffer(manifest.pcrs.pcr0, 48, "pcr0"),
+    registrar.decodeFixedHexBuffer(manifest.pcrs.pcr1, 48, "pcr1"),
+    registrar.decodeFixedHexBuffer(manifest.pcrs.pcr2, 48, "pcr2"),
+  );
+  const alreadyAllowed = exists || !dryRun ? isImageAllowed(registry, appId, pcrSetHash, rpcUrl) : false;
+  if (!alreadyAllowed) {
+    console.log(`==> image not yet allowed (pcrSetHash ${pcrSetHash}), calling setAllowedImage`);
+    if (!dryRun) {
+      const outDir = path.join(REPO_ROOT, ".work-calldata", `allow-image-${sanitize(appName)}`);
+      const plan = await registrar.planAllowImage({
+        appId, pcr0: manifest.pcrs.pcr0, pcr1: manifest.pcrs.pcr1, pcr2: manifest.pcrs.pcr2,
+        registry, rpcUrl, from, outDir,
+      });
+      broadcastCalldataDir(outDir, { rpcUrl, privateKey });
+      void plan;
+    }
+  } else {
+    console.log("==> image already allowed, skipping setAllowedImage");
+  }
+
+  // 4. registerEnclave -- never skipped. If the signer is already registered, that's a
+  // meaningful revert (SignerAlreadyRegistered), not something to silently swallow.
+  console.log("==> registering the enclave's attestation");
+  if (!dryRun) {
+    const outDir = path.join(REPO_ROOT, ".work-calldata", `register-${sanitize(appName)}`);
+    await registrar.planRegister({
+      attestation: manifest.attestation, appId, certManager, validator, registry, rpcUrl, from, outDir,
+    });
+    broadcastCalldataDir(outDir, { rpcUrl, privateKey });
+  }
+
+  // 5. verify
+  if (!dryRun) {
+    const valid = isValidSigner(registry, appId, manifest.eth_address, rpcUrl);
+    if (!valid) {
+      console.error(`error: isValidSigner(${appId}, ${manifest.eth_address}) is false after registration.`);
+      console.error("check the EnclaveRegistered event's actual signer -- it may not match the manifest's eth_address.");
+      process.exit(1);
+    }
+    console.log(`==> verified: ${manifest.eth_address} is a valid signer for ${appId}`);
+    console.log("==> deploy complete");
+    console.log(JSON.stringify({ appId, appName, registry, ethAddress: manifest.eth_address, pcrSetHash }, null, 2));
+  } else {
+    console.log("==> dry run complete, nothing broadcast");
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// status
+// ---------------------------------------------------------------------------------------------
+
+function statusCommand(args) {
+  if (args.length === 0 || args[0].startsWith("--")) {
+    console.error("error: <app-dir> is required");
+    usage();
+    process.exit(2);
+  }
+  const appDir = path.resolve(args[0]);
+  const options = parseFlags(args.slice(1));
+  const config = loadAppConfig(appDir);
+  const chainDefaults = loadChainDefaults();
+
+  const appName = options["app-name"] || config.name || path.basename(appDir);
+  const appId = normalizeBytes32(options["app-id"] || config.appId || keccak256Hex(appName));
+  const rpcUrl = options["rpc-url"] || chainDefaults.rpcUrl || DEFAULT_RPC_URL;
+  const registry = registrar.validateAddress(options["registry"] || config.registry || chainDefaults.registry, "registry");
+
+  const out = castCall(registry, "apps(bytes32)(address,uint64,uint32,bool,bool,bytes32,string)", [appId], rpcUrl);
+  const [owner, configVersion, signerTTL, paused, exists] = out;
+
+  console.log(`app        ${appName} (${appId})`);
+  console.log(`registry   ${registry}`);
+  if (exists !== "true") {
+    console.log("exists     false -- createApp has not been called for this app yet");
+    return;
+  }
+  console.log(`owner      ${owner}`);
+  console.log(`configVer  ${configVersion}`);
+  console.log(`signerTTL  ${signerTTL}s`);
+  console.log(`paused     ${paused}`);
+
+  const deployManifestPath = path.join(REPO_ROOT, "enclave-server", "deployments", appName, "manifest.json");
+  if (fs.existsSync(deployManifestPath)) {
+    const manifest = JSON.parse(fs.readFileSync(deployManifestPath, "utf8"));
+    const valid = isValidSigner(registry, appId, manifest.eth_address, rpcUrl);
+    console.log(`signer     ${manifest.eth_address} -- currently valid: ${valid}`);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// manifest resolution (the attest step)
+// ---------------------------------------------------------------------------------------------
+
+async function resolveManifest(appDir, options, appName) {
+  if (options["attestation"]) {
+    const eth = options["eth-address"];
+    if (!eth) throw new Error("--eth-address is required alongside --attestation");
+    return normalizeManifest({
+      attestation: options["attestation"],
+      pcrs: { pcr0: requireOpt(options, "pcr0"), pcr1: requireOpt(options, "pcr1"), pcr2: requireOpt(options, "pcr2") },
+      eth_address: eth,
+    });
+  }
+
+  let manifest;
+  if (options["manifest-path"]) {
+    manifest = JSON.parse(fs.readFileSync(path.resolve(options["manifest-path"]), "utf8"));
+  } else {
+    const cmd = options["attest-cmd"] || defaultAttestCmd(appDir, options, appName);
+    console.log(`==> running attest command: ${cmd}`);
+    const stdout = execFileSync(cmd, { shell: true, cwd: REPO_ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
+    manifest = parseManifestFromStdout(stdout);
+    if (!manifest) {
+      const fallbackPath = path.join(REPO_ROOT, "enclave-server", "deployments", appName, "manifest.json");
+      if (fs.existsSync(fallbackPath)) manifest = JSON.parse(fs.readFileSync(fallbackPath, "utf8"));
+    }
+    if (!manifest) throw new Error("could not resolve a deploy manifest from the attest command's output");
+  }
+  return normalizeManifest(manifest);
+}
+
+function defaultAttestCmd(appDir, options, appName) {
+  const secrets = options["secrets"];
+  if (!secrets) throw new Error("--secrets is required for the default attest command");
+  const secretsPath = path.isAbsolute(secrets) ? secrets : path.join(appDir, secrets);
+  if (!fs.existsSync(secretsPath)) throw new Error(`secrets file does not exist: ${secretsPath}`);
+  return `bash enclave-server/deploy_and_attest.sh ${shellQuote(appName)} --secrets ${shellQuote(secretsPath)}`;
+}
+
+function parseManifestFromStdout(stdout) {
+  const lines = stdout.split("\n").map((l) => l.trim()).filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    try {
+      const parsed = JSON.parse(lines[i]);
+      if (parsed && typeof parsed === "object" && (parsed.pcrs || parsed.attestation || parsed.attestation_path)) return parsed;
+    } catch {
+      // not JSON, keep scanning upward
+    }
+  }
+  return null;
+}
+
+function normalizeManifest(manifest) {
+  if (!manifest.pcrs || !manifest.pcrs.pcr0 || !manifest.pcrs.pcr1 || !manifest.pcrs.pcr2) {
+    throw new Error("manifest is missing pcr0/pcr1/pcr2");
+  }
+  let attestation = manifest.attestation;
+  if (!attestation && manifest.attestation_path) {
+    const attestationPath = path.isAbsolute(manifest.attestation_path)
+      ? manifest.attestation_path
+      : path.join(REPO_ROOT, manifest.attestation_path);
+    attestation = JSON.parse(fs.readFileSync(attestationPath, "utf8")).attestation;
+  }
+  if (!attestation) throw new Error("manifest has neither attestation nor attestation_path");
+  if (!manifest.eth_address) throw new Error("manifest is missing eth_address");
+  return {
+    attestation: attestation.startsWith("0x") ? attestation : `0x${attestation}`,
+    pcrs: manifest.pcrs,
+    eth_address: manifest.eth_address,
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// chain reads/writes
+// ---------------------------------------------------------------------------------------------
+
+function appExists(registry, appId, rpcUrl) {
+  const out = castCall(registry, "apps(bytes32)(address,uint64,uint32,bool,bool,bytes32,string)", [appId], rpcUrl);
+  return out[4] === "true";
+}
+
+function isImageAllowed(registry, appId, pcrSetHash, rpcUrl) {
+  const out = castCall(registry, "isImageAllowed(bytes32,bytes32)(bool)", [appId, pcrSetHash], rpcUrl);
+  return out[0] === "true";
+}
+
+function isValidSigner(registry, appId, signer, rpcUrl) {
+  const out = castCall(registry, "isValidSigner(bytes32,address)(bool)", [appId, signer], rpcUrl);
+  return out[0] === "true";
+}
+
+function castCall(to, sig, args, rpcUrl) {
+  const out = execFileSync("cast", ["call", to, sig, ...args, "--rpc-url", rpcUrl], { encoding: "utf8" });
+  return out.split("\n").map((l) => l.trim()).filter(Boolean);
+}
+
+function castSend(to, sig, args, rpcUrl, privateKey) {
+  execFileSync("cast", ["send", to, sig, ...args.map(String), "--rpc-url", rpcUrl, "--private-key", privateKey], {
+    encoding: "utf8",
+    stdio: ["ignore", "inherit", "inherit"],
+  });
+}
+
+function castWalletAddress(privateKey) {
+  return execFileSync("cast", ["wallet", "address", "--private-key", privateKey], { encoding: "utf8" }).trim();
+}
+
+function broadcastCalldataDir(dir, { rpcUrl, privateKey, gasMultiplier = "110" }) {
+  const out = execFileSync(
+    "forge",
+    ["script", "script/SubmitCalldataDir.s.sol:SubmitCalldataDir", "--rpc-url", rpcUrl, "--broadcast", "-g", String(gasMultiplier)],
+    { cwd: REPO_ROOT, env: { ...process.env, CALLDATA_DIR: dir, PRIVATE_KEY: privateKey }, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+  );
+  console.log(out);
+}
+
+// ---------------------------------------------------------------------------------------------
+// small helpers
+// ---------------------------------------------------------------------------------------------
+
+function loadAppConfig(appDir) {
+  const configPath = path.join(appDir, "cobalt.json");
+  if (!fs.existsSync(configPath)) return {};
+  return JSON.parse(fs.readFileSync(configPath, "utf8"));
+}
+
+function loadChainDefaults() {
+  const deployPath = path.join(REPO_ROOT, "deployments", "monad-testnet.json");
+  if (!fs.existsSync(deployPath)) return {};
+  const d = JSON.parse(fs.readFileSync(deployPath, "utf8"));
+  return { rpcUrl: d.rpcUrl, registry: d.enclaveRegistry, certManager: d.certManager, validator: d.nitroValidator };
+}
+
+function parseFlags(args) {
+  const options = {};
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (!arg.startsWith("--")) continue;
+    const key = arg.slice(2);
+    const next = args[i + 1];
+    if (next === undefined || next.startsWith("--")) {
+      options[key] = "true";
+    } else {
+      options[key] = next;
+      i++;
+    }
+  }
+  return options;
+}
+
+function requireOpt(options, name) {
+  if (!options[name]) throw new Error(`--${name} is required`);
+  return options[name];
+}
+
+function requireEnv(name) {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} must be set in the environment`);
+  return value;
+}
+
+function sanitize(name) {
+  return name.replace(/[^a-zA-Z0-9._-]/g, "-");
+}
+
+function shellQuote(value) {
+  return `"${String(value).replace(/(["\\$`])/g, "\\$1")}"`;
+}
+
+function normalizeBytes32(value) {
+  const hex = value.startsWith("0x") ? value.slice(2) : value;
+  return `0x${hex.padStart(64, "0")}`;
+}
+
+function keccak256Hex(value) {
+  return execFileSync("cast", ["keccak", value], { encoding: "utf8" }).trim();
+}
+
+if (require.main === module) {
+  Promise.resolve(main()).catch((err) => {
+    console.error(`error: ${err.message}`);
+    process.exit(1);
+  });
+}
