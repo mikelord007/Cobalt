@@ -43,3 +43,4 @@ base64 = "0.22"
 
 [features]
 ping = []
+dice = []

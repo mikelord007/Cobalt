@@ -30,7 +30,9 @@ impl IntoResponse for EnclaveError {
 // (4) a one-line addition to Cargo.toml's [features]. Nothing else changes.
 mod apps {
     #[cfg(feature = "ping")] #[path = "ping/mod.rs"] pub mod ping;
+    #[cfg(feature = "dice")] #[path = "dice/mod.rs"] pub mod dice;
 }
 pub mod app {
     #[cfg(feature = "ping")] pub use crate::apps::ping::*;
+    #[cfg(feature = "dice")] pub use crate::apps::dice::*;
 }
