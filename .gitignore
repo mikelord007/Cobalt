@@ -8,6 +8,7 @@ cache/
 # Secrets and generated deploy state
 .secrets/
 .work/
+.work-calldata/
 secrets.json
 user-data.sh
 trust-policy.json
