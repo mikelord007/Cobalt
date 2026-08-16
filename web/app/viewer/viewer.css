@@ -24,7 +24,7 @@
   -webkit-font-smoothing: antialiased;
 }
 
-.page a { color: var(--accent); }
+.page a { color: var(--accent-link); }
 .page a:hover { text-decoration: none; }
 
 /* ---------- typography helpers ---------- */
@@ -249,7 +249,7 @@
   padding: 0.6rem 0.75rem;
   border-bottom: 1px solid var(--border);
 }
-.page .terminal-chrome .tdot { width: 9px; height: 9px; border-radius: 50%; background: #33363c; }
+.page .terminal-chrome .tdot { width: 9px; height: 9px; border-radius: 50%; background: var(--terminal-dot); }
 .page .terminal-body {
   font-family: var(--font-mono);
   font-size: 0.8rem;
@@ -294,9 +294,9 @@
 }
 .page tbody tr.valid-row {
   border-top: 2px solid var(--accent);
-  background: rgba(59,107,255,0.05);
+  background: var(--accent-tint);
 }
-.page tbody tr:hover { background: rgba(255,255,255,0.015); }
+.page tbody tr:hover { background: var(--row-hover); }
 .page .cell-sub { display: block; color: var(--text-muted); font-size: 0.72rem; margin-top: 0.2rem; }
 .page .glyph-ok { color: var(--accent); }
 .page .glyph-bad { color: var(--negative); }

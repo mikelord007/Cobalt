@@ -57,6 +57,31 @@
   text-decoration: none;
 }
 
+.site-nav .nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.site-nav .theme-toggle {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  padding: 9px 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.site-nav .theme-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 @media (max-width: 560px) {
   .site-nav .nav-cta span.long { display: none; }
 }

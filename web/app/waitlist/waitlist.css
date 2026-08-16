@@ -116,7 +116,7 @@
   color: var(--bg);
 }
 .waitlist-page .btn-primary:hover:not(:disabled) {
-  background: #5580ff;
+  background: var(--accent-hover);
 }
 .waitlist-page .btn-primary:disabled {
   opacity: 0.7;

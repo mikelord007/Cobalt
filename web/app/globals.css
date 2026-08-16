@@ -5,25 +5,41 @@
    names (landing: --text / --muted / --disabled, viewer: --text-primary / --text-muted /
    --text-disabled) -- both sets are kept here so each page's ported stylesheet can keep
    referencing its original variable names unchanged.
+
+   THEMING: light is the default palette (plain :root), dark is an override block that
+   activates via [data-theme="dark"] on <html> (see SiteNav.js for the toggle that sets
+   it, and the inline anti-FOUC script in layout.js that applies a stored preference
+   before first paint). Every color everywhere else in the app is consumed as var(--token)
+   -- never a literal hex -- so both palettes apply site-wide with no per-component changes.
+   Structural values (fonts, spacing, corners) are theme-independent and live only once,
+   below both palette blocks.
    ===================================================================================== */
 :root {
-  --bg: #08090A;
-  --surface: #0F1113;
-  --border: #22252A;
-  --hairline: #16181C;
+  color-scheme: light;
+
+  /* ---------- LIGHT PALETTE (default) ---------- */
+  --bg: #FAFAF8;
+  --surface: #FFFFFF;
+  --border: #E2E2E0;
+  --hairline: #EDEDEB;
   --accent: #3B6BFF;
-  --negative: #D0483C;
+  --accent-hover: #2E56D9;
+  --accent-link: #2E56D9;
+  --accent-tint: rgba(59, 107, 255, 0.08);
+  --row-hover: rgba(0, 0, 0, 0.025);
+  --terminal-dot: #D8D8D5;
+  --negative: #B8392E;
 
   /* landing/index.html names */
-  --text: #F4F4F1;
-  --text-secondary: #C9CCD1;
-  --muted: #8A8D93;
-  --disabled: #6C7078;
+  --text: #14161A;
+  --text-secondary: #3D4045;
+  --muted: #6C7078;
+  --disabled: #83878F;
 
   /* viewer/index.html names (same palette, different names) */
-  --text-primary: #F4F4F1;
-  --text-muted: #8A8D93;
-  --text-disabled: #6C7078;
+  --text-primary: #14161A;
+  --text-muted: #6C7078;
+  --text-disabled: #83878F;
 
   --font-display: 'Archivo Black', 'Archivo', -apple-system, 'Segoe UI', sans-serif;
   --font-display-fallback-weight: 900;
@@ -31,6 +47,32 @@
   --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', 'Consolas', monospace;
 
   --margin: clamp(20px, 7vw, 110px);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* ---------- DARK PALETTE ---------- */
+  --bg: #08090A;
+  --surface: #0F1113;
+  --border: #22252A;
+  --hairline: #16181C;
+  --accent: #3B6BFF;
+  --accent-hover: #5580ff;
+  --accent-link: #3B6BFF;
+  --accent-tint: rgba(59, 107, 255, 0.05);
+  --row-hover: rgba(255, 255, 255, 0.015);
+  --terminal-dot: #33363c;
+  --negative: #D0483C;
+
+  --text: #F4F4F1;
+  --text-secondary: #C9CCD1;
+  --muted: #8A8D93;
+  --disabled: #6C7078;
+
+  --text-primary: #F4F4F1;
+  --text-muted: #8A8D93;
+  --text-disabled: #6C7078;
 }
 
 @font-face {
