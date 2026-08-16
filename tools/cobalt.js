@@ -125,7 +125,7 @@ async function deployCommand(args) {
         appId, pcr0: manifest.pcrs.pcr0, pcr1: manifest.pcrs.pcr1, pcr2: manifest.pcrs.pcr2,
         registry, rpcUrl, from, outDir,
       });
-      broadcastCalldataDir(outDir, { rpcUrl, privateKey });
+      broadcastCalldataDir(outDir, { rpcUrl, privateKey, from });
       void plan;
     }
   } else {
@@ -140,7 +140,7 @@ async function deployCommand(args) {
     await registrar.planRegister({
       attestation: manifest.attestation, appId, certManager, validator, registry, rpcUrl, from, outDir,
     });
-    broadcastCalldataDir(outDir, { rpcUrl, privateKey });
+    broadcastCalldataDir(outDir, { rpcUrl, privateKey, from });
   }
 
   // 5. verify
@@ -309,11 +309,45 @@ function castWalletAddress(privateKey) {
   return execFileSync("cast", ["wallet", "address", "--private-key", privateKey], { encoding: "utf8" }).trim();
 }
 
-function broadcastCalldataDir(dir, { rpcUrl, privateKey, gasMultiplier = "110" }) {
+// Monad charges the submitted gas LIMIT, not gas used -- so the real cost of a broadcast is
+// bounded by the sum of the calldata dir's own per-slot limits, not by what actually gets
+// consumed. Check this against the sender's live balance BEFORE invoking forge: a silent
+// multi-minute stall (observed once, likely a transient RPC hiccup layered on top of this same
+// condition) is a much worse failure mode than an immediate, clear error here.
+function preflightBalanceCheck(dir, { rpcUrl, from }) {
+  let totalGas = 0n;
+  for (let slot = 1; slot <= 8; slot++) {
+    const gasLimitPath = path.join(dir, `tx${slot}_gaslimit.txt`);
+    if (fs.existsSync(gasLimitPath)) totalGas += BigInt(fs.readFileSync(gasLimitPath, "utf8").trim());
+  }
+  if (totalGas === 0n) return;
+  const gasPriceHex = execFileSync("cast", ["gas-price", "--rpc-url", rpcUrl], { encoding: "utf8" }).trim();
+  const gasPrice = BigInt(gasPriceHex);
+  const balanceWei = BigInt(execFileSync("cast", ["balance", from, "--rpc-url", rpcUrl], { encoding: "utf8" }).trim());
+  const requiredWei = totalGas * gasPrice;
+  if (balanceWei < requiredWei) {
+    const toMon = (wei) => (Number(wei) / 1e18).toFixed(4);
+    const toGwei = (wei) => (Number(wei) / 1e9).toFixed(2);
+    throw new Error(
+      `insufficient balance for this broadcast: need up to ~${toMon(requiredWei)} MON ` +
+        `(${totalGas} total gas limit at ${toGwei(gasPrice)} gwei), have ${toMon(balanceWei)} MON. ` +
+        `Fund ${from} on Monad testnet before retrying.`,
+    );
+  }
+}
+
+function broadcastCalldataDir(dir, { rpcUrl, privateKey, from, gasMultiplier = "110" }) {
+  preflightBalanceCheck(dir, { rpcUrl, from });
   const out = execFileSync(
     "forge",
     ["script", "script/SubmitCalldataDir.s.sol:SubmitCalldataDir", "--rpc-url", rpcUrl, "--broadcast", "-g", String(gasMultiplier)],
-    { cwd: REPO_ROOT, env: { ...process.env, CALLDATA_DIR: dir, PRIVATE_KEY: privateKey }, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+    {
+      cwd: REPO_ROOT,
+      env: { ...process.env, CALLDATA_DIR: dir, PRIVATE_KEY: privateKey },
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 10 * 60 * 1000, // never hang silently, regardless of root cause -- fail loudly after 10 minutes
+    },
   );
   console.log(out);
 }
