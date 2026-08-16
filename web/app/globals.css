@@ -1,0 +1,52 @@
+/* =====================================================================================
+   SHARED DESIGN TOKENS
+   Ported verbatim from landing/index.html and viewer/index.html's inline <style> blocks.
+   Both original files defined the same palette under slightly different custom-property
+   names (landing: --text / --muted / --disabled, viewer: --text-primary / --text-muted /
+   --text-disabled) -- both sets are kept here so each page's ported stylesheet can keep
+   referencing its original variable names unchanged.
+   ===================================================================================== */
+:root {
+  --bg: #08090A;
+  --surface: #0F1113;
+  --border: #22252A;
+  --hairline: #16181C;
+  --accent: #3B6BFF;
+  --negative: #D0483C;
+
+  /* landing/index.html names */
+  --text: #F4F4F1;
+  --text-secondary: #C9CCD1;
+  --muted: #8A8D93;
+  --disabled: #6C7078;
+
+  /* viewer/index.html names (same palette, different names) */
+  --text-primary: #F4F4F1;
+  --text-muted: #8A8D93;
+  --text-disabled: #6C7078;
+
+  --font-display: 'Archivo Black', 'Archivo', -apple-system, 'Segoe UI', sans-serif;
+  --font-display-fallback-weight: 900;
+  --font-body: 'Archivo', -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', 'Consolas', monospace;
+
+  --margin: clamp(20px, 7vw, 110px);
+}
+
+@font-face {
+  font-family: 'Archivo Black';
+  src: local('Archivo Black');
+  font-weight: 900;
+}
+@font-face {
+  font-family: 'Archivo';
+  src: local('Archivo');
+  font-weight: 400 700;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+html { background: var(--bg); }
+body { background: var(--bg); min-height: 100vh; }
+img, svg { max-width: 100%; }
+::selection { background: var(--accent); color: var(--bg); }

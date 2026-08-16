@@ -1,0 +1,62 @@
+/* =====================================================================================
+   SHARED TOP NAV
+   Ported from landing/index.html's header.nav / .nav-inner / .logo / .nav-cta rules,
+   reused as-is across both routes. Scoped under .site-nav so it can never collide with
+   either page's own stylesheet.
+   ===================================================================================== */
+.site-nav {
+  border-bottom: 1px solid var(--hairline);
+}
+.site-nav .wrap {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-left: var(--margin);
+  padding-right: var(--margin);
+}
+.site-nav .nav-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 22px;
+  padding-bottom: 22px;
+}
+.site-nav .logo {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+}
+.site-nav .logo:hover {
+  text-decoration: none;
+}
+.site-nav .logo .dot {
+  width: 9px;
+  height: 9px;
+  background: var(--accent);
+  display: inline-block;
+}
+.site-nav .nav-cta {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 9px 16px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.site-nav .nav-cta:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  text-decoration: none;
+}
+
+@media (max-width: 560px) {
+  .site-nav .nav-cta span.long { display: none; }
+}
