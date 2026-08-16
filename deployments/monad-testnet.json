@@ -1,0 +1,10 @@
+{
+  "chainId": 10143,
+  "rpcUrl": "https://testnet-rpc.monad.xyz",
+  "p384Verifier": "0xC39773993C23f1E77898A15A38784a1b2896a423",
+  "certManager": "0xb36f152CeF341FFA631Adc306C0ed1354d4D52CE",
+  "nitroValidator": "0x064Bb793b55e34945471afF31781A32c5839Dffe",
+  "enclaveRegistry": "0xccF281dE61bfb970575827B5c962345F39bDa145",
+  "pingConsumer": "0xf62EAF1fdE81723f4d80b21eAb0A9b330ebA3a97",
+  "pingAppId": "0x3160ada18c530e22627bf2c8c125e08ed5022b770f07efeb2c6ffaf6da861153"
+}
