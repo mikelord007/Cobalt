@@ -14,6 +14,28 @@ const registrar = require(path.join(REPO_ROOT, "tools", "registrar.js"));
 const DEFAULT_RPC_URL = "https://testnet-rpc.monad.xyz";
 const DEFAULT_SIGNER_TTL = "2592000"; // 30 days
 
+// `npm install -g cobalt-tee`'s postinstall (scripts/install-foundry.js) downloads Foundry
+// straight from GitHub when it isn't already on PATH, and drops forge/cast/anvil/chisel into
+// <package-root>/.bin-foundry/ -- it deliberately does NOT touch the user's PATH (fragile/invasive
+// from a postinstall, and often needs a fresh shell anyway). So every place below that shells out
+// to "cast"/"forge" resolves through here instead: bundled copy first, PATH second. This makes the
+// two ways Foundry can end up available (auto-installed vs. already installed some other way)
+// transparent to the rest of this file.
+const BUNDLED_FOUNDRY_DIR = path.join(REPO_ROOT, ".bin-foundry");
+
+function foundryBinName(name) {
+  return process.platform === "win32" ? `${name}.exe` : name;
+}
+
+function resolveFoundryBin(name) {
+  const bundled = path.join(BUNDLED_FOUNDRY_DIR, foundryBinName(name));
+  if (fs.existsSync(bundled)) return bundled;
+  return name; // fall back to PATH
+}
+
+const CAST_BIN = resolveFoundryBin("cast");
+const FORGE_BIN = resolveFoundryBin("forge");
+
 function main() {
   const [, , command, ...rest] = process.argv;
   if (command === "deploy") return deployCommand(rest);
@@ -297,19 +319,19 @@ function isValidSigner(registry, appId, signer, rpcUrl) {
 }
 
 function castCall(to, sig, args, rpcUrl) {
-  const out = execFileSync("cast", ["call", to, sig, ...args, "--rpc-url", rpcUrl], { encoding: "utf8" });
+  const out = execFileSync(CAST_BIN, ["call", to, sig, ...args, "--rpc-url", rpcUrl], { encoding: "utf8" });
   return out.split("\n").map((l) => l.trim()).filter(Boolean);
 }
 
 function castSend(to, sig, args, rpcUrl, privateKey) {
-  execFileSync("cast", ["send", to, sig, ...args.map(String), "--rpc-url", rpcUrl, "--private-key", privateKey], {
+  execFileSync(CAST_BIN, ["send", to, sig, ...args.map(String), "--rpc-url", rpcUrl, "--private-key", privateKey], {
     encoding: "utf8",
     stdio: ["ignore", "inherit", "inherit"],
   });
 }
 
 function castWalletAddress(privateKey) {
-  return execFileSync("cast", ["wallet", "address", "--private-key", privateKey], { encoding: "utf8" }).trim();
+  return execFileSync(CAST_BIN, ["wallet", "address", "--private-key", privateKey], { encoding: "utf8" }).trim();
 }
 
 // Monad charges the submitted gas LIMIT, not gas used -- so the real cost of a broadcast is
@@ -324,9 +346,9 @@ function preflightBalanceCheck(dir, { rpcUrl, from }) {
     if (fs.existsSync(gasLimitPath)) totalGas += BigInt(fs.readFileSync(gasLimitPath, "utf8").trim());
   }
   if (totalGas === 0n) return;
-  const gasPriceHex = execFileSync("cast", ["gas-price", "--rpc-url", rpcUrl], { encoding: "utf8" }).trim();
+  const gasPriceHex = execFileSync(CAST_BIN, ["gas-price", "--rpc-url", rpcUrl], { encoding: "utf8" }).trim();
   const gasPrice = BigInt(gasPriceHex);
-  const balanceWei = BigInt(execFileSync("cast", ["balance", from, "--rpc-url", rpcUrl], { encoding: "utf8" }).trim());
+  const balanceWei = BigInt(execFileSync(CAST_BIN, ["balance", from, "--rpc-url", rpcUrl], { encoding: "utf8" }).trim());
   const requiredWei = totalGas * gasPrice;
   if (balanceWei < requiredWei) {
     const toMon = (wei) => (Number(wei) / 1e18).toFixed(4);
@@ -342,7 +364,7 @@ function preflightBalanceCheck(dir, { rpcUrl, from }) {
 function broadcastCalldataDir(dir, { rpcUrl, privateKey, from, gasMultiplier = "110" }) {
   preflightBalanceCheck(dir, { rpcUrl, from });
   const out = execFileSync(
-    "forge",
+    FORGE_BIN,
     ["script", "script/SubmitCalldataDir.s.sol:SubmitCalldataDir", "--rpc-url", rpcUrl, "--broadcast", "-g", String(gasMultiplier)],
     {
       cwd: REPO_ROOT,
@@ -402,19 +424,22 @@ function requireEnv(name) {
 
 // Every write/read path shells out to Foundry's `cast` (and `forge` for broadcasting) -- without
 // it, execFileSync fails with a raw, confusing "ENOENT" deep inside some unrelated step. Check
-// once, upfront, and fail with an actionable message instead.
+// once, upfront, and fail with an actionable message instead. Checks the bundled copy at
+// .bin-foundry/ (see resolveFoundryBin() above) first, then PATH, same as every call site above.
 function checkFoundryOnPath() {
-  for (const tool of ["cast", "forge"]) {
+  for (const [tool, bin] of [["cast", CAST_BIN], ["forge", FORGE_BIN]]) {
     try {
-      execFileSync(tool, ["--version"], { stdio: "ignore" });
+      execFileSync(bin, ["--version"], { stdio: "ignore" });
     } catch (err) {
       if (err.code === "ENOENT") {
         throw new Error(
-          `'${tool}' was not found on PATH. The Cobalt CLI requires Foundry (cast + forge) to be installed -- ` +
-            `see https://getfoundry.sh. If you already installed it, this may just be a PATH issue for the ` +
-            `shell you're running in (foundryup's installer sometimes only wires it into Unix-style shell ` +
-            `profiles, not PowerShell/cmd): try running this command from Git Bash instead, or add ` +
-            `"%USERPROFILE%\\.foundry\\bin" to your PATH and open a new terminal.`,
+          `'${tool}' was not found (checked ${bin === tool ? "PATH" : bin} and PATH). The Cobalt CLI requires ` +
+            `Foundry (cast + forge) to be installed -- if you installed via "npm install -g cobalt-tee" this ` +
+            `should have happened automatically; check the npm install output above for a Foundry auto-install ` +
+            `warning. Otherwise see https://getfoundry.sh to install it manually. If you already installed it, ` +
+            `this may just be a PATH issue for the shell you're running in (foundryup's installer sometimes ` +
+            `only wires it into Unix-style shell profiles, not PowerShell/cmd): try running this command from ` +
+            `Git Bash instead, or add "%USERPROFILE%\\.foundry\\bin" to your PATH and open a new terminal.`,
         );
       }
       // Any other failure (e.g. a non-zero exit from --version) means the binary exists and is
@@ -438,7 +463,7 @@ function normalizeBytes32(value) {
 }
 
 function keccak256Hex(value) {
-  return execFileSync("cast", ["keccak", value], { encoding: "utf8" }).trim();
+  return execFileSync(CAST_BIN, ["keccak", value], { encoding: "utf8" }).trim();
 }
 
 if (require.main === module) {

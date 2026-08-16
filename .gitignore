@@ -18,6 +18,9 @@ secrets-policy.json
 # Node
 node_modules/
 
+# Auto-installed by scripts/install-foundry.js (postinstall) -- bundled forge/cast/anvil/chisel
+.bin-foundry/
+
 # Local tooling state
 .claude/
 
