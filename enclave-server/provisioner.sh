@@ -38,7 +38,7 @@ launch_new_instance() {
   local app="$1"
 
   local current_count
-  current_count=$(python3 -c "import json; print(len(json.load(open('$INSTANCES_JSON'))['instances']))")
+  current_count=$(node -e "console.log(JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')).instances.length)" -- "$INSTANCES_JSON")
   if [ "$current_count" -ge "$MAX_INSTANCES" ]; then
     echo "error: already at $current_count/$MAX_INSTANCES c6a.xlarge instances (the account's 16 vCPU quota allows no more) -- cannot auto-launch another for app '$app'" >&2
     exit 1
@@ -109,31 +109,27 @@ launch_new_instance() {
   fi
 
   echo "==> instance $instance_id ready -- recording it in $INSTANCES_JSON" >&2
-  python3 - "$INSTANCES_JSON" "$instance_id" "$REGION" "$INSTANCE_TYPE" "$public_ip" "$SSH_KEY_JSON" "$SSH_USER" <<'PY'
-import json, os, sys
+  node - "$INSTANCES_JSON" "$instance_id" "$REGION" "$INSTANCE_TYPE" "$public_ip" "$SSH_KEY_JSON" "$SSH_USER" <<'JS'
+const fs = require("fs");
+const [path, instanceId, region, instanceType, publicIp, sshKey, sshUser] = process.argv.slice(2);
 
-path, instance_id, region, instance_type, public_ip, ssh_key, ssh_user = sys.argv[1:8]
-with open(path) as f:
-    data = json.load(f)
+const data = JSON.parse(fs.readFileSync(path, "utf8"));
+data.instances.push({
+  instance_id: instanceId,
+  region,
+  instance_type: instanceType,
+  public_ip: publicIp,
+  ssh_key: sshKey,
+  ssh_user: sshUser,
+  physical_cores: 2,
+  cores_reserved_for_parent: 1,
+  enclaves: [],
+});
 
-data["instances"].append({
-    "instance_id": instance_id,
-    "region": region,
-    "instance_type": instance_type,
-    "public_ip": public_ip,
-    "ssh_key": ssh_key,
-    "ssh_user": ssh_user,
-    "physical_cores": 2,
-    "cores_reserved_for_parent": 1,
-    "enclaves": [],
-})
-
-tmp_path = path + ".tmp"
-with open(tmp_path, "w") as f:
-    json.dump(data, f, indent=2)
-    f.write("\n")
-os.replace(tmp_path, path)
-PY
+const tmpPath = path + ".tmp";
+fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2) + "\n");
+fs.renameSync(tmpPath, path);
+JS
 
   echo "$public_ip"
 }
@@ -156,22 +152,22 @@ case "$CMD" in
     done
 
     set +e
-    FOUND_IP=$(python3 - "$INSTANCES_JSON" "$CORES" <<'PY'
-import json, sys
+    FOUND_IP=$(node - "$INSTANCES_JSON" "$CORES" <<'JS'
+const fs = require("fs");
+const [path, coresArg] = process.argv.slice(2);
+const cores = parseInt(coresArg, 10);
 
-path, cores = sys.argv[1], int(sys.argv[2])
-with open(path) as f:
-    data = json.load(f)
-
-for inst in data["instances"]:
-    used = inst["cores_reserved_for_parent"] + sum(e["cores"] for e in inst["enclaves"])
-    free = inst["physical_cores"] - used
-    if free >= cores:
-        print(inst["public_ip"])
-        sys.exit(0)
-
-sys.exit(1)
-PY
+const data = JSON.parse(fs.readFileSync(path, "utf8"));
+for (const inst of data.instances) {
+  const used = inst.cores_reserved_for_parent + inst.enclaves.reduce((sum, e) => sum + e.cores, 0);
+  const free = inst.physical_cores - used;
+  if (free >= cores) {
+    console.log(inst.public_ip);
+    process.exit(0);
+  }
+}
+process.exit(1);
+JS
 )
     FOUND_STATUS=$?
     set -e
@@ -185,38 +181,26 @@ PY
   record)
     [ $# -eq 6 ] || usage
     INSTANCE_ID="$1"; APP="$2"; CORES="$3"; ENCLAVE_ID="$4"; CPU_IDS="$5"; PARENT_PORT="$6"
-    python3 - "$INSTANCES_JSON" "$INSTANCE_ID" "$APP" "$CORES" "$ENCLAVE_ID" "$CPU_IDS" "$PARENT_PORT" <<'PY'
-import json, os, sys
+    node - "$INSTANCES_JSON" "$INSTANCE_ID" "$APP" "$CORES" "$ENCLAVE_ID" "$CPU_IDS" "$PARENT_PORT" <<'JS'
+const fs = require("fs");
+const [path, instanceId, app, coresArg, enclaveId, cpuIds, parentPortArg] = process.argv.slice(2);
+const cores = parseInt(coresArg, 10);
+const parentPort = parseInt(parentPortArg, 10);
+const cpuIdsList = cpuIds.split(",").filter((x) => x !== "").map((x) => parseInt(x, 10));
 
-path, instance_id, app, cores, enclave_id, cpu_ids, parent_port = sys.argv[1:8]
-cores = int(cores)
-parent_port = int(parent_port)
-cpu_ids_list = [int(x) for x in cpu_ids.split(",") if x != ""]
+const data = JSON.parse(fs.readFileSync(path, "utf8"));
+const inst = data.instances.find((i) => i.instance_id === instanceId);
+if (!inst) {
+  console.error(`error: no instance with id '${instanceId}' in ${path}`);
+  process.exit(1);
+}
+inst.enclaves = inst.enclaves.filter((e) => e.app !== app);
+inst.enclaves.push({ app, cores, enclave_id: enclaveId, cpu_ids: cpuIdsList, parent_port: parentPort });
 
-with open(path) as f:
-    data = json.load(f)
-
-for inst in data["instances"]:
-    if inst["instance_id"] != instance_id:
-        continue
-    inst["enclaves"] = [e for e in inst["enclaves"] if e["app"] != app]
-    inst["enclaves"].append({
-        "app": app,
-        "cores": cores,
-        "enclave_id": enclave_id,
-        "cpu_ids": cpu_ids_list,
-        "parent_port": parent_port,
-    })
-    break
-else:
-    sys.exit(f"error: no instance with id '{instance_id}' in {path}")
-
-tmp_path = path + ".tmp"
-with open(tmp_path, "w") as f:
-    json.dump(data, f, indent=2)
-    f.write("\n")
-os.replace(tmp_path, path)
-PY
+const tmpPath = path + ".tmp";
+fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2) + "\n");
+fs.renameSync(tmpPath, path);
+JS
     echo "recorded enclave for app '$APP' on instance '$INSTANCE_ID'" >&2
     ;;
   *)
