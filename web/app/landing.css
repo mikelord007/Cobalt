@@ -344,6 +344,66 @@
   max-width: 62ch;
   line-height: 1.7;
 }
+.landing-page .terminal-note.try-it-lead {
+  color: var(--text-secondary);
+}
+
+/* ---------- TRY-IT BLOCK (multi-line copyable command, install-widget variant) ---------- */
+.landing-page .install-widget.install-block {
+  display: block;
+  max-width: 780px;
+  padding: 0;
+}
+.landing-page .install-block-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--hairline);
+}
+.landing-page .install-block-label {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.landing-page .install-block-body {
+  padding: 20px 22px 24px;
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  line-height: 1.9;
+  overflow-x: auto;
+}
+.landing-page .install-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  white-space: pre;
+}
+.landing-page .install-line .install-prompt {
+  flex-shrink: 0;
+}
+.landing-page .install-line.comment {
+  margin-top: 6px;
+}
+.landing-page .install-line.comment .install-cmd {
+  color: var(--muted);
+  font-style: italic;
+}
+.landing-page .install-line.placeholder .install-cmd {
+  color: var(--accent);
+}
+/* Keep each command line intrinsically sized so the whole block scrolls horizontally as one
+   unit (via .install-block-body's overflow-x) instead of every line getting its own
+   independent mini-scrollbar -- overrides the narrow-viewport `flex:1 1 auto` rule below,
+   which is meant for the single-line hero pill, not this multi-line block. */
+.landing-page .install-widget.install-block .install-block-body .install-cmd {
+  flex: 0 0 auto;
+  overflow-x: visible;
+}
 
 /* ---------- CLOSING ---------- */
 .landing-page .closing {

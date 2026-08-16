@@ -73,6 +73,18 @@ export default function LandingPage() {
             Real AWS Nitro attestation, verified by a Solidity contract on Monad. Not a
             simulation.
           </p>
+          <p className="terminal-note try-it-lead">Run this for real, against the dice example:</p>
+          <InstallCommand
+            label="$ try it"
+            lines={[
+              "npm install -g cobalt-tee",
+              "git clone https://github.com/mikelord007/Cobalt.git",
+              "cd Cobalt",
+              "# then, with a funded Monad testnet key:",
+              { text: "export PRIVATE_KEY=0xYOUR_FUNDED_MONAD_TESTNET_KEY", placeholder: true },
+              "cobalt deploy examples/dice --secrets env.json",
+            ]}
+          />
         </div>
       </section>
 
