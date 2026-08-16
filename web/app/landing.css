@@ -101,6 +101,57 @@
   max-width: 56ch;
   line-height: 1.55;
 }
+.landing-page .install-widget {
+  margin-top: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  max-width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 12px 12px 12px 20px;
+}
+.landing-page .install-widget .install-prompt {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.landing-page .install-widget .install-cmd {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow-x: auto;
+}
+.landing-page .install-widget .install-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  padding: 8px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.landing-page .install-widget .install-copy:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.landing-page .install-widget .install-copy.copied {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.landing-page .install-widget .install-copy .check {
+  color: var(--accent);
+}
 .landing-page .hero .cta-row {
   margin-top: 44px;
   display: flex;
@@ -434,4 +485,12 @@
 @media (max-width: 560px) {
   .landing-page .steps-grid { grid-template-columns: 1fr; }
   .landing-page .hero-meta { gap: 24px; }
+  .landing-page .install-widget {
+    display: flex;
+    width: 100%;
+    flex-wrap: wrap;
+    row-gap: 10px;
+  }
+  .landing-page .install-widget .install-cmd { flex: 1 1 auto; min-width: 0; }
+  .landing-page .install-widget .install-copy { margin-left: auto; }
 }

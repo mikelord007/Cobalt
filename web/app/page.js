@@ -1,4 +1,5 @@
 import Link from "next/link";
+import InstallCommand from "./components/InstallCommand";
 import "./landing.css";
 
 export const metadata = {
@@ -29,6 +30,7 @@ export default function LandingPage() {
             verifies the enclave&apos;s output on Monad. Not even root on the host machine can
             see inside the enclave or forge what it signs.
           </p>
+          <InstallCommand />
           <div className="cta-row">
             <Link className="btn btn-primary" href="/viewer">
               Open the registry dashboard <span className="btn-arrow">→</span>
