@@ -17,6 +17,7 @@ const THEME_KEY = "cobalt-theme";
 export default function SiteNav() {
   const pathname = usePathname();
   const onViewer = pathname === "/viewer";
+  const onWaitlist = pathname === "/waitlist";
 
   // Light is the default and matches the server-rendered markup (no data-theme attribute).
   // The layout's inline beforeInteractive script may have already flipped <html> to dark
@@ -60,6 +61,11 @@ export default function SiteNav() {
           >
             {theme === "dark" ? "☀" : "☾"}
           </button>
+          {!onWaitlist && (
+            <Link className="nav-cta nav-cta-waitlist" href="/waitlist">
+              Waitlist
+            </Link>
+          )}
           {onViewer ? (
             <Link className="nav-cta" href="/">
               <span className="long">Back to </span>landing page

@@ -84,4 +84,15 @@
 
 @media (max-width: 560px) {
   .site-nav .nav-cta span.long { display: none; }
+  .site-nav .nav-actions { gap: 8px; }
+  .site-nav .nav-cta,
+  .site-nav .theme-toggle { padding-left: 10px; padding-right: 10px; }
+}
+
+/* Below this, even the shortened labels don't reliably fit alongside the logo on one
+   row with three nav-actions items -- let the actions row wrap onto its own line
+   rather than overflow or clip. */
+@media (max-width: 480px) {
+  .site-nav .nav-inner { flex-wrap: wrap; row-gap: 10px; }
+  .site-nav .nav-actions { flex-wrap: wrap; justify-content: flex-end; width: 100%; }
 }
