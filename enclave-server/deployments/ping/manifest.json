@@ -6,8 +6,8 @@
     "pcr2": "1bd0207ec970a7b2b0fff97c319e4d768960f36ff8e88a39df92ea45a0517d9c3a616045bb09aaa0a91663297fcf287e"
   },
   "attestation_path": "enclave-server/deployments/ping/attestation.json",
-  "eth_address": "0x62c83130b2093097c7d0217aaa05476cec734685",
+  "eth_address": "0x91c9b30bec6134db6a74d137fbdaa7f8823c92f8",
   "parent_port": 3000,
-  "enclave_cid": 17,
+  "enclave_cid": 18,
   "instance": "98.81.233.100"
 }
