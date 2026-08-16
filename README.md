@@ -21,16 +21,16 @@ RPC: `https://testnet-rpc.monad.xyz`
 
 | Contract | Address |
 |---|---|
-| `P384Verifier` | `0xC39773993C23f1E77898A15A38784a1b2896a423` |
-| `CertManager` | `0xb36f152CeF341FFA631Adc306C0ed1354d4D52CE` |
-| `NitroValidator` | `0x064Bb793b55e34945471afF31781A32c5839Dffe` |
-| `EnclaveRegistry` | `0xccF281dE61bfb970575827B5c962345F39bDa145` |
-| `PingConsumer` (example) | `0xf62EAF1fdE81723f4d80b21eAb0A9b330ebA3a97` |
+| `P384Verifier` | [`0xC39773993C23f1E77898A15A38784a1b2896a423`](https://testnet.monadvision.com/address/0xC39773993C23f1E77898A15A38784a1b2896a423) |
+| `CertManager` | [`0xb36f152CeF341FFA631Adc306C0ed1354d4D52CE`](https://testnet.monadvision.com/address/0xb36f152CeF341FFA631Adc306C0ed1354d4D52CE) |
+| `NitroValidator` | [`0x064Bb793b55e34945471afF31781A32c5839Dffe`](https://testnet.monadvision.com/address/0x064Bb793b55e34945471afF31781A32c5839Dffe) |
+| `EnclaveRegistry` | [`0xccF281dE61bfb970575827B5c962345F39bDa145`](https://testnet.monadvision.com/address/0xccF281dE61bfb970575827B5c962345F39bDa145) |
+| `PingConsumer` (example) | [`0xf62EAF1fdE81723f4d80b21eAb0A9b330ebA3a97`](https://testnet.monadvision.com/address/0xf62EAF1fdE81723f4d80b21eAb0A9b330ebA3a97) |
 
-No verified Monad testnet block explorer URL is referenced anywhere in this repo, so these are
-listed as raw addresses rather than guessed-at explorer links — paste them into whatever explorer
-you use for Monad testnet. See `deployments/monad-testnet.json` for the machine-readable version,
-including the `ping` example's `appId`.
+All five contracts are source-verified (exact match) on [MonadVision](https://testnet.monadvision.com),
+the Sourcify-backed Monad testnet explorer, so the addresses above link straight to each contract's
+verified source. See `deployments/monad-testnet.json` for the machine-readable version, including
+the `ping` example's `appId`, and `VERIFICATION.md` for how verification was done and reproduced.
 
 ## What's here
 
