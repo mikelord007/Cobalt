@@ -1,6 +1,7 @@
 # Build outputs
 out/
 cache/
+broadcast/
 **/target/
 *.eif
 *.pcrs
