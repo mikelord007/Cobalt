@@ -1,0 +1,7 @@
+# Force LF line endings for everything, regardless of the platform's core.autocrlf setting.
+# Several files here are shell scripts executed by Docker RUN heredocs (Containerfile) or as
+# the enclave's own init target (enclave-server/src/nautilus-server/run.sh) inside a minimal
+# busybox environment -- CRLF in either breaks the shell parser. Checking this repo out on
+# Windows with core.autocrlf=true silently reintroduces CRLF and re-breaks the enclave build;
+# this file is what prevents that regression. Must be the first thing committed.
+* text=auto eol=lf
