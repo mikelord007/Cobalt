@@ -17,6 +17,9 @@ secrets-policy.json
 # Node
 node_modules/
 
+# Local tooling state
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db
