@@ -69,6 +69,7 @@ async function deployCommand(args) {
     process.exit(1);
   }
 
+  checkFoundryOnPath();
   const privateKey = requireEnv("PRIVATE_KEY");
   const from = castWalletAddress(privateKey);
 
@@ -171,6 +172,8 @@ function statusCommand(args) {
   }
   const appDir = path.resolve(args[0]);
   const options = parseFlags(args.slice(1));
+
+  checkFoundryOnPath();
   const config = loadAppConfig(appDir);
   const chainDefaults = loadChainDefaults();
 
@@ -395,6 +398,30 @@ function requireEnv(name) {
   const value = process.env[name];
   if (!value) throw new Error(`${name} must be set in the environment`);
   return value;
+}
+
+// Every write/read path shells out to Foundry's `cast` (and `forge` for broadcasting) -- without
+// it, execFileSync fails with a raw, confusing "ENOENT" deep inside some unrelated step. Check
+// once, upfront, and fail with an actionable message instead.
+function checkFoundryOnPath() {
+  for (const tool of ["cast", "forge"]) {
+    try {
+      execFileSync(tool, ["--version"], { stdio: "ignore" });
+    } catch (err) {
+      if (err.code === "ENOENT") {
+        throw new Error(
+          `'${tool}' was not found on PATH. The Cobalt CLI requires Foundry (cast + forge) to be installed -- ` +
+            `see https://getfoundry.sh. If you already installed it, this may just be a PATH issue for the ` +
+            `shell you're running in (foundryup's installer sometimes only wires it into Unix-style shell ` +
+            `profiles, not PowerShell/cmd): try running this command from Git Bash instead, or add ` +
+            `"%USERPROFILE%\\.foundry\\bin" to your PATH and open a new terminal.`,
+        );
+      }
+      // Any other failure (e.g. a non-zero exit from --version) means the binary exists and is
+      // runnable, which is all this check cares about -- let the real command surface any deeper
+      // problem itself rather than swallowing it here.
+    }
+  }
 }
 
 function sanitize(name) {
