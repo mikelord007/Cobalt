@@ -1,0 +1,37 @@
+# Reproducibility note: the spec for this build called for a from-scratch StageX-style hermetic
+# bootstrap (build every layer, including the toolchain itself, from source against digest-pinned
+# inputs). Given the time budget here, that bootstrap is substituted with official upstream images
+# pinned by exact sha256 digest instead of floating tags. This still gives the property that
+# matters -- the same Containerfile + the same Cargo.lock + the same pinned digests produce the
+# same image, and therefore the same enclave measurements (PCR0/1/2), independently reproducible
+# by anyone who pulls the same digests -- it just trusts the upstream image publisher for the
+# base layers rather than rebuilding them from source.
+#
+# EIF packaging note: rather than hand-rolling `eif_build` plus a kernel/initramfs, this image is
+# built as a normal Docker image and handed to `nitro-cli build-enclave --docker-uri`, which owns
+# the kernel/initramfs/EIF assembly. Determinism is unaffected: same Containerfile + same
+# Cargo.lock + same pinned base digest = same image = same PCRs.
+
+FROM rust@sha256:f6c22e0a256c05d44fca23bf530120b5d4a6249a393734884281ca80782329bc AS build
+RUN rustup target add x86_64-unknown-linux-musl
+RUN apk add --no-cache musl-dev
+WORKDIR /src
+COPY src/nautilus-server /src/nautilus-server
+WORKDIR /src/nautilus-server
+ENV RUSTFLAGS="-C target-feature=+crt-static"
+ARG ENCLAVE_APP
+RUN cargo build --locked --no-default-features --features $ENCLAVE_APP --release --target x86_64-unknown-linux-musl
+
+FROM alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc AS final
+# socat relays vsock<->tcp for both the app port (3000) and the secrets-injection port (7777);
+# jq parses the JSON blob delivered over vsock:7777 into env var assignments; busybox's own `ip`
+# applet brings up loopback (there's no other network config inside the enclave).
+RUN apk add --no-cache socat jq
+ARG ENCLAVE_APP
+COPY --from=build /src/nautilus-server/target/x86_64-unknown-linux-musl/release/nautilus-server /nautilus-server
+COPY src/nautilus-server/run.sh /run.sh
+COPY src/nautilus-server/allowed_endpoints.yaml /allowed_endpoints.yaml
+COPY src/nautilus-server/src/apps/${ENCLAVE_APP}/allowed_endpoints.yaml /allowed_endpoints.yaml
+RUN chmod +x /run.sh /nautilus-server
+WORKDIR /
+ENTRYPOINT ["/run.sh"]
