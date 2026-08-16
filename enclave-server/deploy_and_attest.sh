@@ -44,6 +44,13 @@ remote() {
   ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "$SSH_USER@$INSTANCE_IP" "$@"
 }
 
+# Extracts a single field from JSON on stdin. Node, not python3 -- node is already required to run
+# the CLI that invokes this script at all, so it costs nothing extra; python3 would be one more
+# thing a fresh machine might not have.
+json_field() {
+  node -e "process.stdout.write(String(JSON.parse(require('fs').readFileSync(0,'utf8'))['$1']))"
+}
+
 AWS_ACCOUNT_ID="279056796721"
 REGION="us-east-1"
 BUCKET="cobalt-enclave-artifacts-${AWS_ACCOUNT_ID}-${REGION}"
@@ -155,8 +162,8 @@ fi
 echo "==> launching enclave (production mode, no --debug-mode)" >&2
 RUN_JSON=$(remote "sudo nitro-cli run-enclave --cpu-count 2 --memory 512M --eif-path ~/deployments/$APP/out/nitro.eif")
 echo "$RUN_JSON" >&2
-ENCLAVE_ID=$(printf '%s' "$RUN_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin)['EnclaveID'])")
-CID=$(printf '%s' "$RUN_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin)['EnclaveCID'])")
+ENCLAVE_ID=$(printf '%s' "$RUN_JSON" | json_field EnclaveID)
+CID=$(printf '%s' "$RUN_JSON" | json_field EnclaveCID)
 remote "echo '$ENCLAVE_ID' > ~/deployments/$APP/enclave_id"
 echo "==> enclave id $ENCLAVE_ID, cid $CID" >&2
 
@@ -234,38 +241,38 @@ if ! printf '%s' "$HEALTH_JSON" | grep -q '"eth_address"'; then
   echo "==> /health did not become ready within 20s" >&2
   exit 1
 fi
-ETH_ADDRESS=$(printf '%s' "$HEALTH_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin)['eth_address'])")
+ETH_ADDRESS=$(printf '%s' "$HEALTH_JSON" | json_field eth_address)
 echo "==> enclave eth address: $ETH_ADDRESS" >&2
 
 ATTESTATION_JSON=$(curl -s -m 10 "http://$INSTANCE_IP:$PARENT_PORT/attestation")
-ATTESTATION_HEX=$(printf '%s' "$ATTESTATION_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin)['attestation'])")
+ATTESTATION_HEX=$(printf '%s' "$ATTESTATION_JSON" | json_field attestation)
 
 # 8. Write outputs atomically, then echo the manifest as the LAST line of stdout -- this is the
 # contract a CLI built on a different track parses to pick up the deploy result.
 DEPLOY_OUT_DIR="$SCRIPT_DIR/deployments/$APP"
 mkdir -p "$DEPLOY_OUT_DIR"
-python3 - "$DEPLOY_OUT_DIR" "$APP" "$PCR0" "$PCR1" "$PCR2" "$ETH_ADDRESS" "$PARENT_PORT" "$CID" "$INSTANCE_IP" "$ATTESTATION_HEX" <<'PY'
-import json, os, sys
+node - "$DEPLOY_OUT_DIR" "$APP" "$PCR0" "$PCR1" "$PCR2" "$ETH_ADDRESS" "$PARENT_PORT" "$CID" "$INSTANCE_IP" "$ATTESTATION_HEX" <<'JS'
+const fs = require("fs");
+const path = require("path");
+const [deployDir, app, pcr0, pcr1, pcr2, ethAddress, parentPort, enclaveCid, instance, attestationHex] = process.argv.slice(2);
 
-deploy_dir, app, pcr0, pcr1, pcr2, eth_address, parent_port, enclave_cid, instance, attestation_hex = sys.argv[1:]
+const manifest = {
+  app,
+  pcrs: { pcr0, pcr1, pcr2 },
+  attestation_path: `enclave-server/deployments/${app}/attestation.json`,
+  eth_address: ethAddress,
+  parent_port: parseInt(parentPort, 10),
+  enclave_cid: parseInt(enclaveCid, 10),
+  instance,
+};
+const attestation = { attestation: attestationHex };
 
-manifest = {
-    "app": app,
-    "pcrs": {"pcr0": pcr0, "pcr1": pcr1, "pcr2": pcr2},
-    "attestation_path": f"enclave-server/deployments/{app}/attestation.json",
-    "eth_address": eth_address,
-    "parent_port": int(parent_port),
-    "enclave_cid": int(enclave_cid),
-    "instance": instance,
+for (const [name, obj] of [["manifest.json", manifest], ["attestation.json", attestation]]) {
+  const finalPath = path.join(deployDir, name);
+  const tmpPath = finalPath + ".tmp";
+  fs.writeFileSync(tmpPath, JSON.stringify(obj, null, 2));
+  fs.renameSync(tmpPath, finalPath);
 }
-attestation = {"attestation": attestation_hex}
 
-for name, obj in (("manifest.json", manifest), ("attestation.json", attestation)):
-    final_path = os.path.join(deploy_dir, name)
-    tmp_path = final_path + ".tmp"
-    with open(tmp_path, "w") as f:
-        json.dump(obj, f, indent=2)
-    os.replace(tmp_path, final_path)
-
-print(json.dumps(manifest))
-PY
+console.log(JSON.stringify(manifest));
+JS
