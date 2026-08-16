@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cobalt — Verifiable Off-Chain Compute</title>
+<meta name="description" content="Cobalt runs application logic inside AWS Nitro Enclaves and verifies the output on Monad. Hardware-enforced correctness, operator-trusted liveness.">
+<style>
+  @font-face {
+    font-family: 'Archivo Black';
+    src: local('Archivo Black');
+    font-weight: 900;
+  }
+  @font-face {
+    font-family: 'Archivo';
+    src: local('Archivo');
+    font-weight: 400 700;
+  }
+
+  :root {
+    --bg: #08090A;
+    --surface: #0F1113;
+    --border: #22252A;
+    --hairline: #16181C;
+    --text: #F4F4F1;
+    --text-secondary: #C9CCD1;
+    --muted: #8A8D93;
+    --disabled: #6C7078;
+    --accent: #3B6BFF;
+    --negative: #D0483C;
+
+    --font-display: 'Archivo Black', 'Archivo', -apple-system, 'Segoe UI', sans-serif;
+    --font-display-fallback-weight: 900;
+    --font-body: 'Archivo', -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', 'Consolas', monospace;
+
+    --margin: clamp(20px, 7vw, 110px);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { background: var(--bg); }
+
+  body {
+    background: var(--bg);
+    color: var(--text-secondary);
+    font-family: var(--font-body);
+    font-weight: 400;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  img, svg { max-width: 100%; }
+
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .wrap {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding-left: var(--margin);
+    padding-right: var(--margin);
+  }
+
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    font-weight: 900;
+    color: var(--text);
+    letter-spacing: -0.03em;
+    line-height: 1.02;
+  }
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--muted);
+    display: block;
+    margin-bottom: 18px;
+  }
+
+  section {
+    padding-top: clamp(56px, 10vw, 128px);
+    padding-bottom: clamp(56px, 10vw, 128px);
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  section:last-of-type { border-bottom: none; }
+
+  /* ---------- NAV ---------- */
+  header.nav {
+    border-bottom: 1px solid var(--hairline);
+  }
+  .nav-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 22px;
+    padding-bottom: 22px;
+  }
+  .logo {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.04em;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .logo .dot {
+    width: 9px;
+    height: 9px;
+    background: var(--accent);
+    display: inline-block;
+  }
+  .nav-cta {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 9px 16px;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+  .nav-cta:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    text-decoration: none;
+  }
+
+  /* ---------- BUTTONS ---------- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 0.02em;
+    padding: 16px 26px;
+    border: 1px solid transparent;
+    cursor: pointer;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: var(--bg);
+  }
+  .btn-primary:hover { background: #5580ff; text-decoration: none; }
+  .btn-secondary {
+    background: transparent;
+    color: var(--text);
+    border-color: var(--border);
+  }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+  .btn-arrow { color: inherit; }
+
+  /* ---------- HERO ---------- */
+  .hero {
+    padding-top: clamp(72px, 12vw, 148px);
+    padding-bottom: clamp(64px, 10vw, 128px);
+  }
+  .hero h1 {
+    font-size: clamp(38px, 6.2vw, 84px);
+    max-width: 18ch;
+  }
+  .hero h1 .accent { color: var(--accent); }
+  .hero .sub {
+    margin-top: 28px;
+    font-size: clamp(16px, 2vw, 20px);
+    color: var(--text-secondary);
+    max-width: 56ch;
+    line-height: 1.55;
+  }
+  .hero .cta-row {
+    margin-top: 44px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: center;
+  }
+  .hero .cta-note {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.03em;
+  }
+  .hero-meta {
+    margin-top: 72px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 40px;
+    border-top: 1px solid var(--hairline);
+    padding-top: 28px;
+  }
+  .hero-meta .item {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .hero-meta .item strong {
+    color: var(--text);
+    font-weight: 700;
+  }
+  .hero-meta .item .chip {
+    display: inline-block;
+    background: var(--accent);
+    color: var(--bg);
+    font-weight: 700;
+    padding: 2px 7px;
+    margin-right: 8px;
+  }
+
+  /* ---------- TRUST MODEL ---------- */
+  .trust {
+    background: var(--surface);
+  }
+  .trust .eyebrow { color: var(--muted); }
+  .trust h2 {
+    font-size: clamp(28px, 4.4vw, 52px);
+    max-width: 22ch;
+    margin-bottom: 48px;
+  }
+  .trust-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    border: 1px solid var(--border);
+  }
+  .trust-col {
+    padding: 36px clamp(20px, 3vw, 44px);
+    border-top: 4px solid var(--accent);
+  }
+  .trust-col + .trust-col {
+    border-left: 1px solid var(--border);
+  }
+  .trust-col .tag {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    margin-bottom: 14px;
+    display: block;
+  }
+  .trust-col h3 {
+    font-size: clamp(20px, 2.6vw, 28px);
+    margin-bottom: 16px;
+  }
+  .trust-col p {
+    color: var(--text-secondary);
+    font-size: 15px;
+  }
+  .trust-col.dim .tag { color: var(--muted); }
+  .trust-note {
+    margin-top: 28px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--muted);
+    max-width: 62ch;
+    line-height: 1.7;
+  }
+
+  /* ---------- HOW IT WORKS ---------- */
+  .steps h2 {
+    font-size: clamp(28px, 4.4vw, 52px);
+    max-width: 20ch;
+    margin-bottom: 56px;
+  }
+  .steps-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+  }
+  .step {
+    background: var(--surface);
+    padding: 32px 26px 36px;
+    border-top: 4px solid var(--accent);
+  }
+  .step .num {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: 22px;
+  }
+  .step h3 {
+    font-family: var(--font-body);
+    font-weight: 700;
+    color: var(--text);
+    font-size: 18px;
+    letter-spacing: -0.01em;
+    line-height: 1.25;
+    margin-bottom: 12px;
+  }
+  .step p {
+    font-size: 14px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  /* ---------- PULLQUOTE ---------- */
+  .pullquote-section {
+    padding-top: clamp(72px, 11vw, 140px);
+    padding-bottom: clamp(72px, 11vw, 140px);
+  }
+  .pullquote {
+    border-left: 4px solid var(--accent);
+    padding: 6px 0 6px 26px;
+    max-width: 40ch;
+  }
+  .pullquote p {
+    font-family: var(--font-display);
+    font-weight: 900;
+    color: var(--text);
+    font-size: clamp(28px, 5vw, 56px);
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+  }
+  .pullquote-sub {
+    margin-top: 26px;
+    padding-left: 30px;
+    max-width: 58ch;
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.7;
+  }
+
+  .reject-example {
+    margin-top: 44px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    padding: 16px 20px;
+    border: 1px solid var(--border);
+    max-width: 620px;
+  }
+  .reject-example .x { color: var(--negative); font-weight: 700; }
+  .reject-example .label { color: var(--muted); }
+  .reject-example .hash { color: var(--text-secondary); }
+
+  /* ---------- TERMINAL ---------- */
+  .terminal-section h2 {
+    font-size: clamp(28px, 4.4vw, 52px);
+    max-width: 20ch;
+    margin-bottom: 40px;
+  }
+  .terminal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    max-width: 780px;
+  }
+  .terminal-bar {
+    display: flex;
+    gap: 7px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .terminal-bar .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--border);
+  }
+  .terminal-body {
+    padding: 24px 26px 30px;
+    font-family: var(--font-mono);
+    font-size: 13.5px;
+    line-height: 1.75;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .terminal-body .prompt { color: var(--muted); }
+  .terminal-body .cmd { color: var(--text); }
+  .terminal-body .out { color: var(--text-secondary); }
+  .terminal-body .ok { color: var(--accent); }
+  .terminal-body .dim { color: var(--muted); }
+
+  /* ---------- MULTI-TENANT STRIP ---------- */
+  .strip {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    margin-top: 56px;
+  }
+  .strip .cell {
+    background: var(--surface);
+    padding: 28px 24px;
+  }
+  .strip .cell .big {
+    font-family: var(--font-display);
+    font-weight: 900;
+    color: var(--accent);
+    font-size: clamp(30px, 3.6vw, 44px);
+    letter-spacing: -0.03em;
+    display: block;
+    margin-bottom: 10px;
+  }
+  .strip .cell .lbl {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  /* ---------- EXAMPLE / AUCTION ---------- */
+  .example {
+    background: var(--surface);
+  }
+  .example-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+    align-items: start;
+  }
+  .example h2 {
+    font-size: clamp(26px, 3.8vw, 40px);
+    margin-bottom: 20px;
+    max-width: 16ch;
+  }
+  .example-card {
+    border-left: 4px solid var(--accent);
+    padding: 18px 0 18px 22px;
+  }
+  .example-card .k {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    display: block;
+    margin-bottom: 10px;
+  }
+  .example-card p {
+    color: var(--text-secondary);
+    font-size: 15px;
+    line-height: 1.7;
+  }
+  .example p.lede {
+    color: var(--text-secondary);
+    font-size: 16px;
+    line-height: 1.7;
+    max-width: 46ch;
+  }
+
+  /* ---------- CLOSING ---------- */
+  .closing {
+    text-align: left;
+    padding-top: clamp(72px, 12vw, 148px);
+    padding-bottom: clamp(72px, 12vw, 148px);
+  }
+  .closing .eyebrow { color: var(--accent); }
+  .closing h2 {
+    font-size: clamp(32px, 5.4vw, 64px);
+    max-width: 20ch;
+    margin-bottom: 22px;
+  }
+  .closing p.sub {
+    color: var(--text-secondary);
+    font-size: clamp(15px, 1.6vw, 18px);
+    max-width: 56ch;
+    line-height: 1.6;
+    margin-bottom: 40px;
+  }
+  .closing .cta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: center;
+  }
+
+  /* ---------- FOOTER ---------- */
+  footer {
+    padding-top: 32px;
+    padding-bottom: 32px;
+  }
+  .footer-inner {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 16px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--disabled);
+    letter-spacing: 0.02em;
+  }
+  .footer-inner a { color: var(--muted); }
+
+  /* ---------- RESPONSIVE ---------- */
+  @media (max-width: 860px) {
+    .trust-grid { grid-template-columns: 1fr; }
+    .trust-col + .trust-col { border-left: none; border-top: 1px solid var(--border); }
+    .steps-grid { grid-template-columns: 1fr 1fr; }
+    .example-grid { grid-template-columns: 1fr; }
+    .strip { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 560px) {
+    .steps-grid { grid-template-columns: 1fr; }
+    .nav-cta span.long { display: none; }
+    .hero-meta { gap: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="logo"><span class="dot"></span>COBALT</div>
+    <a class="nav-cta" href="../viewer/index.html"><span class="long">Open the </span>registry dashboard</a>
+  </div>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="wrap">
+    <span class="eyebrow">Verifiable off-chain compute</span>
+    <h1>Your code runs where <span class="accent">no one can see it</span> — and the chain believes it anyway.</h1>
+    <p class="sub">Cobalt deploys application logic into AWS Nitro Enclaves and cryptographically verifies the enclave's output on Monad. Not even root on the host machine can see inside the enclave or forge what it signs.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="../viewer/index.html">Open the registry dashboard <span class="btn-arrow">→</span></a>
+      <span class="cta-note">live on Monad testnet · chain 10143</span>
+    </div>
+    <div class="hero-meta">
+      <div class="item"><span class="chip">CLI</span><strong>cobalt deploy &lt;app-dir&gt;</strong></div>
+      <div class="item">Multi-tenant registry — one contract, any number of apps</div>
+      <div class="item">Real AWS hardware attestation, not a simulation</div>
+    </div>
+  </div>
+</section>
+
+<!-- TRUST MODEL -->
+<section class="trust">
+  <div class="wrap">
+    <span class="eyebrow">The trust model, stated plainly</span>
+    <h2>Hardware-enforced correctness. Operator-trusted liveness.</h2>
+    <div class="trust-grid">
+      <div class="trust-col">
+        <span class="tag">✓ Cryptographically guaranteed</span>
+        <h3>Which code produced a result</h3>
+        <p>An AWS Nitro Enclave hardware-signs an attestation naming exactly the code image running inside it. A Solidity contract stack on Monad verifies that signature on-chain before trusting anything the enclave says. This cannot be faked by whoever operates the servers — not with root, not with physical access to the host.</p>
+      </div>
+      <div class="trust-col dim">
+        <span class="tag">Still requires trust</span>
+        <h3>Whether the service is up, and answering honestly</h3>
+        <p>Attestation proves what code would produce a result if the enclave runs it — it doesn't force the operator to keep the lights on, or to route real requests to it instead of silently withholding them. Availability and honest operation of the service still rest on trusting whoever runs it. Cobalt does not pretend otherwise.</p>
+      </div>
+    </div>
+    <p class="trust-note">This is a stated design boundary, not a gap we're hoping you won't notice — a system that is honest about what it doesn't solve is one that's actually understood.</p>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="steps">
+  <div class="wrap">
+    <span class="eyebrow">How it works</span>
+    <h2>From code to a result the chain will accept</h2>
+    <div class="steps-grid">
+      <div class="step">
+        <div class="num">01</div>
+        <h3>Enclave attests</h3>
+        <p>The Nitro Enclave boots your app's logic and produces a hardware-signed attestation document naming the exact code measurement (PCR0) running inside it.</p>
+      </div>
+      <div class="step">
+        <div class="num">02</div>
+        <h3>Contract verifies on-chain</h3>
+        <p>A "hinted" cryptographic construction lets the registry perform a P-384 / X.509 attestation check — normally too expensive to verify on-chain — in just a few transactions.</p>
+      </div>
+      <div class="step">
+        <div class="num">03</div>
+        <h3>Signer becomes trusted</h3>
+        <p>Once the attestation verifies, the enclave's signing key is registered on-chain as authorized to sign results for that exact code image — and no other.</p>
+      </div>
+      <div class="step">
+        <div class="num">04</div>
+        <h3>App logic runs, verified</h3>
+        <p>The enclave executes your application and signs its output. The chain accepts the result because it already knows precisely what code produced it.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PULLQUOTE -->
+<section class="pullquote-section">
+  <div class="wrap">
+    <span class="eyebrow">Tamper-evidence</span>
+    <div class="pullquote">
+      <p>The code cannot lie about what it is.</p>
+    </div>
+    <p class="pullquote-sub">Rebuild the enclave's code with the logic tampered in any way — one changed line, one swapped dependency — and the resulting cryptographic measurement changes. The on-chain registry rejects the new image outright. There is no version of the running code that can misrepresent itself to the chain.</p>
+    <div class="reject-example">
+      <span class="x">✗</span>
+      <span class="label">registerImage(pcr0)</span>
+      <span class="hash">0x7f2a19...e04c</span>
+      <span class="label">— measurement not recognized, reverted</span>
+    </div>
+  </div>
+</section>
+
+<!-- TERMINAL -->
+<section class="terminal-section">
+  <div class="wrap">
+    <span class="eyebrow">Not a mockup</span>
+    <h2>One command, a real enclave, a real on-chain result</h2>
+    <div class="terminal">
+      <div class="terminal-bar">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      </div>
+      <div class="terminal-body"><span class="prompt">$ </span><span class="cmd">cobalt deploy examples/ping --secrets env.json</span>
+<span class="dim">    launching Nitro Enclave on EC2...</span>
+<span class="out">==&gt; attestation ready: eth_address 0x91c9...c92f8</span>
+<span class="out">    pcr0 b423123987...5d5d6fdf</span>
+<span class="ok">✓ registered on Monad testnet (chain 10143)</span>
+<span class="ok">✓ isValidSigner: true</span>
+<span class="dim">    app live — awaiting signed results</span></div>
+    </div>
+
+    <div class="strip">
+      <div class="cell"><span class="big">10143</span><span class="lbl">Monad testnet chain ID</span></div>
+      <div class="cell"><span class="big">1</span><span class="lbl">command to deploy an app</span></div>
+      <div class="cell"><span class="big">N</span><span class="lbl">apps per registry, no redeploy</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- EXAMPLE -->
+<section class="example">
+  <div class="wrap">
+    <div class="example-grid">
+      <div>
+        <span class="eyebrow">Why this matters</span>
+        <h2>The sealed-bid auction problem</h2>
+        <p class="lede">A Vickrey auction is impossible to run trustlessly on-chain by conventional means: whoever can see every bid before the auction closes can insert a fake losing bid just under the real winner's, inflating the price the winner pays. Someone always has to be trusted not to peek.</p>
+      </div>
+      <div class="example-card">
+        <span class="k">With a TEE</span>
+        <p>Bids are decrypted and compared only inside the enclave. No operator, auctioneer, or validator ever sees them — including the one running the hardware. The chain trusts the winning result because it can verify exactly which code computed it, not because it trusts a person to have looked away.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CLOSING -->
+<section class="closing">
+  <div class="wrap">
+    <span class="eyebrow">This is running right now</span>
+    <h2>Real hardware. Real chain. Live today.</h2>
+    <p class="sub">This isn't a concept deck — it's genuinely deployed on Monad testnet: real AWS Nitro Enclave attestation, a real EC2-hosted enclave, a real Solidity registry contract, and a real signed round-trip verified on-chain.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="../viewer/index.html">View live deployments <span class="btn-arrow">→</span></a>
+      <a class="btn btn-secondary" href="../viewer/index.html">Open the registry dashboard</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap footer-inner">
+    <span>COBALT — verifiable off-chain compute on Monad</span>
+    <span><a href="../viewer/index.html">registry dashboard</a></span>
+  </div>
+</footer>
+
+</body>
+</html>
