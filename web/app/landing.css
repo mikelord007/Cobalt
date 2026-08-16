@@ -1,5 +1,5 @@
 /* =====================================================================================
-   LANDING PAGE
+   LANDING PAGE (+ shared with /trust, which reuses the .trust-* rules below)
    Ported verbatim from landing/index.html's inline <style> block. Every original
    selector is prefixed with .landing-page (the page's root wrapper) so this stylesheet
    can never collide with the viewer route's stylesheet, regardless of how Next.js
@@ -165,33 +165,7 @@
   color: var(--muted);
   letter-spacing: 0.03em;
 }
-.landing-page .hero-meta {
-  margin-top: 72px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 40px;
-  border-top: 1px solid var(--hairline);
-  padding-top: 28px;
-}
-.landing-page .hero-meta .item {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  color: var(--muted);
-}
-.landing-page .hero-meta .item strong {
-  color: var(--text);
-  font-weight: 700;
-}
-.landing-page .hero-meta .item .chip {
-  display: inline-block;
-  background: var(--accent);
-  color: var(--bg);
-  font-weight: 700;
-  padding: 2px 7px;
-  margin-right: 8px;
-}
-
-/* ---------- TRUST MODEL ---------- */
+/* ---------- TRUST MODEL (shared with /trust page) ---------- */
 .landing-page .trust {
   background: var(--surface);
 }
@@ -233,14 +207,6 @@
   font-size: 15px;
 }
 .landing-page .trust-col.dim .tag { color: var(--muted); }
-.landing-page .trust-note {
-  margin-top: 28px;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  color: var(--muted);
-  max-width: 62ch;
-  line-height: 1.7;
-}
 
 /* ---------- HOW IT WORKS ---------- */
 .landing-page .steps h2 {
@@ -281,11 +247,21 @@
   color: var(--muted);
   line-height: 1.6;
 }
+.landing-page .steps-note {
+  margin-top: 40px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--muted);
+  max-width: 62ch;
+  line-height: 1.7;
+}
 
-/* ---------- PULLQUOTE ---------- */
+/* ---------- PULLQUOTE (tamper-evidence — the page's centerpiece: most vertical
+   space and the largest type on the page, reusing the hero's padding scale and the
+   closing headline's font-size scale rather than inventing new values) ---------- */
 .landing-page .pullquote-section {
-  padding-top: clamp(72px, 11vw, 140px);
-  padding-bottom: clamp(72px, 11vw, 140px);
+  padding-top: clamp(72px, 12vw, 148px);
+  padding-bottom: clamp(72px, 12vw, 148px);
 }
 .landing-page .pullquote {
   border-left: 4px solid var(--accent);
@@ -296,7 +272,7 @@
   font-family: var(--font-display);
   font-weight: 900;
   color: var(--text);
-  font-size: clamp(28px, 5vw, 56px);
+  font-size: clamp(32px, 5.4vw, 64px);
   letter-spacing: -0.03em;
   line-height: 1.05;
 }
@@ -360,75 +336,13 @@
 .landing-page .terminal-body .out { color: var(--text-secondary); }
 .landing-page .terminal-body .ok { color: var(--accent); }
 .landing-page .terminal-body .dim { color: var(--muted); }
-
-/* ---------- MULTI-TENANT STRIP ---------- */
-.landing-page .strip {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1px;
-  background: var(--border);
-  border: 1px solid var(--border);
-  margin-top: 56px;
-}
-.landing-page .strip .cell {
-  background: var(--surface);
-  padding: 28px 24px;
-}
-.landing-page .strip .cell .big {
-  font-family: var(--font-display);
-  font-weight: 900;
-  color: var(--accent);
-  font-size: clamp(30px, 3.6vw, 44px);
-  letter-spacing: -0.03em;
-  display: block;
-  margin-bottom: 10px;
-}
-.landing-page .strip .cell .lbl {
+.landing-page .terminal-note {
+  margin-top: 28px;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-
-/* ---------- EXAMPLE / AUCTION ---------- */
-.landing-page .example {
-  background: var(--surface);
-}
-.landing-page .example-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 48px;
-  align-items: start;
-}
-.landing-page .example h2 {
-  font-size: clamp(26px, 3.8vw, 40px);
-  margin-bottom: 20px;
-  max-width: 16ch;
-}
-.landing-page .example-card {
-  border-left: 4px solid var(--accent);
-  padding: 18px 0 18px 22px;
-}
-.landing-page .example-card .k {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--muted);
-  display: block;
-  margin-bottom: 10px;
-}
-.landing-page .example-card p {
-  color: var(--text-secondary);
-  font-size: 15px;
+  max-width: 62ch;
   line-height: 1.7;
-}
-.landing-page .example p.lede {
-  color: var(--text-secondary);
-  font-size: 16px;
-  line-height: 1.7;
-  max-width: 46ch;
 }
 
 /* ---------- CLOSING ---------- */
@@ -479,12 +393,9 @@
   .landing-page .trust-grid { grid-template-columns: 1fr; }
   .landing-page .trust-col + .trust-col { border-left: none; border-top: 1px solid var(--border); }
   .landing-page .steps-grid { grid-template-columns: 1fr 1fr; }
-  .landing-page .example-grid { grid-template-columns: 1fr; }
-  .landing-page .strip { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
   .landing-page .steps-grid { grid-template-columns: 1fr; }
-  .landing-page .hero-meta { gap: 24px; }
   .landing-page .install-widget {
     display: flex;
     width: 100%;
