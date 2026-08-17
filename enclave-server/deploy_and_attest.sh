@@ -227,6 +227,9 @@ RUN_JSON=$(remote "sudo nitro-cli run-enclave --cpu-count 2 --memory 512M --eif-
 echo "$RUN_JSON" >&2
 ENCLAVE_ID=$(printf '%s' "$RUN_JSON" | json_field EnclaveID)
 CID=$(printf '%s' "$RUN_JSON" | json_field EnclaveCID)
+# String([1,3]) in JS joins with "," -- exactly the format provisioner.sh's `record` subcommand
+# expects for its cpu-ids-csv argument, so no extra parsing needed here.
+CPU_IDS=$(printf '%s' "$RUN_JSON" | json_field CPUIDs)
 remote "echo '$ENCLAVE_ID' > ~/deployments/$APP/enclave_id"
 echo "==> enclave id $ENCLAVE_ID, cid $CID" >&2
 
@@ -258,6 +261,26 @@ PY
 scp -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "$WORK_DIR/portalloc.py" "$SSH_USER@$INSTANCE_IP:~/deployments/portalloc.py"
 PARENT_PORT=$(remote "mkdir -p ~/deployments && flock ~/deployments/ports.lock python3 ~/deployments/portalloc.py $APP")
 echo "==> parent port: $PARENT_PORT" >&2
+
+# Persist this enclave's core claim in instances.json so a LATER deploy's capacity check (see
+# provisioner.sh's `acquire`) doesn't think this instance still has room when it doesn't -- without
+# this, a subsequent deploy gets silently routed here believing a core is free, then fails at the
+# real `nitro-cli run-enclave` step once it hits the OS-level allocator's actual limit instead of
+# either reusing real spare capacity or cleanly launching a fresh instance.
+#
+# Best-effort and non-fatal: an already-successful enclave deploy shouldn't fail just because this
+# bookkeeping step couldn't complete -- e.g. --instance-ip pointed at a box provisioner.sh never
+# registered as base capacity in the first place, which `record` requires (it looks the instance id
+# up in instances.json and errors if it's not already there).
+INSTANCE_ID_FOR_RECORD=$(aws ec2 describe-instances --region "$REGION" \
+  --filters "Name=ip-address,Values=$INSTANCE_IP" \
+  --query "Reservations[0].Instances[0].InstanceId" --output text 2>/dev/null || true)
+if [ -n "$INSTANCE_ID_FOR_RECORD" ] && [ "$INSTANCE_ID_FOR_RECORD" != "None" ]; then
+  "$SCRIPT_DIR/provisioner.sh" record "$INSTANCE_ID_FOR_RECORD" "$APP" 1 "$ENCLAVE_ID" "$CPU_IDS" "$PARENT_PORT" \
+    || echo "==> warning: could not record this enclave's core claim in instances.json (continuing -- the deploy itself succeeded)" >&2
+else
+  echo "==> warning: could not resolve an instance id for $INSTANCE_IP -- skipping instances.json bookkeeping" >&2
+fi
 
 # Kill by port ownership (fuser), never by a text pattern (pkill -f) that could match a later
 # line of this same remote invocation and kill the calling shell itself.
