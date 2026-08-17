@@ -46,45 +46,23 @@ export default function LandingPage() {
         <div className="wrap">
           <span className="eyebrow">Not a mockup</span>
           <h2>One command. Real hardware. Real Monad.</h2>
-          <div className="terminal">
-            <div className="terminal-bar">
-              <span className="dot"></span>
-              <span className="dot"></span>
-              <span className="dot"></span>
-            </div>
-            <div className="terminal-body">
-              <span className="prompt">$ </span>
-              <span className="cmd">cobalt deploy examples/ping --secrets env.json</span>
-              {"\n"}
-              <span className="dim">    launching Nitro Enclave on EC2...</span>
-              {"\n"}
-              <span className="out">==&gt; attestation ready: eth_address 0x91c9...c92f8</span>
-              {"\n"}
-              <span className="out">    pcr0 b423123987...5d5d6fdf</span>
-              {"\n"}
-              <span className="ok">✓ registered on Monad testnet (chain 10143)</span>
-              {"\n"}
-              <span className="ok">✓ isValidSigner: true</span>
-              {"\n"}
-              <span className="dim">    app live — awaiting signed results</span>
-            </div>
-          </div>
           <p className="terminal-note">
-            Real AWS Nitro attestation, verified by a Solidity contract on Monad. Not a
-            simulation.
+            Run this and get a real result back, live from Monad testnet right now — a read
+            against the already-deployed registry, verified by a Solidity contract on-chain.
           </p>
-          <p className="terminal-note try-it-lead">Run this for real, against the dice example:</p>
           <InstallCommand
             label="$ try it"
             lines={[
               "npm install -g cobalt-tee",
               "git clone https://github.com/mikelord007/Cobalt.git",
               "cd Cobalt",
-              "# then, with a funded Monad testnet key:",
-              { text: "export PRIVATE_KEY=0xYOUR_FUNDED_MONAD_TESTNET_KEY", placeholder: true },
-              "cobalt deploy examples/dice --secrets env.json",
+              "cobalt status examples/ping",
             ]}
           />
+          <p className="terminal-note try-it-lead">
+            No key, no AWS account. Deploying your own app into an enclave needs your own AWS
+            setup — see the README for the full walkthrough.
+          </p>
         </div>
       </section>
 

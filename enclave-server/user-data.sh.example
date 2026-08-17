@@ -1,0 +1,28 @@
+#!/bin/bash
+# EC2 user-data for a fresh c6a.xlarge that provisioner.sh auto-launches (see launch_new_instance()
+# in that file): installs and enables the Nitro Enclaves CLI, Docker, and the vsock proxy this
+# platform's KMS-secrets path needs, and sizes the enclave allocator to match the fixed
+# `--cpu-count 2 --memory 512M` that deploy_and_attest.sh passes to `nitro-cli run-enclave`.
+#
+# Copy this file to .secrets/user-data.sh (gitignored -- that's why it isn't shipped as-is) before
+# running a deploy that needs to auto-launch capacity, or point $COBALT_USER_DATA at your own copy
+# elsewhere. Nothing in this file is secret; it lives outside version control only because it's
+# operator-side infrastructure config, not because any value here needs to stay private.
+set -e
+dnf update -y
+dnf install -y aws-nitro-enclaves-cli-devel aws-nitro-enclaves-cli docker socat git make jq
+
+usermod -aG docker ec2-user
+usermod -aG ne ec2-user
+
+systemctl start docker && systemctl enable docker
+systemctl start nitro-enclaves-allocator.service && systemctl enable nitro-enclaves-allocator.service
+systemctl enable nitro-enclaves-vsock-proxy.service
+
+ALLOCATOR_YAML=/etc/nitro_enclaves/allocator.yaml
+systemctl stop nitro-enclaves-allocator.service
+sed -r "s/^(\s*memory_mib\s*:\s*).*/\1 3072/" -i "$ALLOCATOR_YAML"
+sed -r "s/^(\s*cpu_count\s*:\s*).*/\1 2/" -i "$ALLOCATOR_YAML"
+systemctl start nitro-enclaves-allocator.service && systemctl enable nitro-enclaves-allocator.service
+
+echo "- {address: kms.us-east-1.amazonaws.com, port: 443}" >> /etc/nitro_enclaves/vsock-proxy.yaml

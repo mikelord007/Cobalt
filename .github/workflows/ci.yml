@@ -1,0 +1,65 @@
+name: CI
+
+# The one thing this workflow exists to catch: `cobalt` breaking on an OS other than whichever one
+# it was last tested on by hand. Before this existed, nothing in the repo exercised cross-platform
+# behavior at all -- tools/registrar.smoke.js is fully OS-agnostic and would pass green on Windows
+# even while `cobalt deploy` was completely unable to run there (Node's `shell: true` always spawns
+# cmd.exe on win32, which can't run or even find bash -- see tools/cobalt.js's resolveBash()).
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  cli:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      # Exercises scripts/install-foundry.js end to end on every OS, including the Windows zip
+      # path (powershell.exe -> pwsh -> System32\tar.exe fallback chain) and the musl/Alpine
+      # detection on Linux -- and registers the `cobalt` global shim itself (npm generates the
+      # right kind for each OS: a plain script on macOS/Linux, .cmd/.ps1/shell shims on Windows).
+      - name: npm install -g (installs cobalt + auto-installs Foundry)
+        run: npm install -g .
+
+      # Pure Node, no shell-out -- OS-agnostic by construction, so a green run here proves nothing
+      # about the blockers this workflow exists to catch. Kept as a baseline sanity check.
+      - name: registrar smoke test
+        run: node tools/registrar.smoke.js
+
+      # A read-only Monad testnet read for the already-deployed `ping` app. Needs no key and no
+      # AWS account, but DOES exercise: the global `cobalt` shim actually being on PATH and
+      # runnable, resolveProjectRoot() finding this checkout, and checkFoundryOnPath() finding the
+      # auto-installed cast/forge. This is the check that would have caught the Windows shell:true
+      # bug and the old REPO_ROOT-is-the-install-dir bug immediately.
+      - name: cobalt status examples/ping
+        run: cobalt status examples/ping
+
+  enclave-server:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # rustup (preinstalled on all three GitHub-hosted runners) reads rust-toolchain.toml
+      # automatically from the crate directory and installs the pinned channel on first use --
+      # no separate toolchain-setup action needed.
+      - name: cargo test --features ping
+        working-directory: enclave-server/src/nautilus-server
+        run: cargo test --no-default-features --features ping
+
+      - name: cargo test --features dice
+        working-directory: enclave-server/src/nautilus-server
+        run: cargo test --no-default-features --features dice

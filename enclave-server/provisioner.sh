@@ -26,10 +26,13 @@ REGION="us-east-1"
 INSTANCE_TYPE="c6a.xlarge"      # 2 physical cores: 1 reserved for host OS, 1 free for an enclave.
 KEY_NAME="cobalt-kp-1"
 SG_NAME="cobalt-enclave-sg"
-SSH_KEY="$HOME/kp-1.pem"
+SSH_KEY="${COBALT_SSH_KEY:-$HOME/kp-1.pem}"
 SSH_KEY_JSON="~/kp-1.pem"       # how the key path is recorded in instances.json (matches the existing entry).
 SSH_USER="ec2-user"
-USER_DATA_FILE="$SCRIPT_DIR/../.secrets/user-data.sh"
+# The real file is real operator secret material and gitignored at .secrets/user-data.sh, so it
+# is never in the npm tarball or a fresh clone -- see enclave-server/user-data.sh.example for the
+# template this deliberately-absent-by-default file must be created from.
+USER_DATA_FILE="${COBALT_USER_DATA:-$SCRIPT_DIR/../.secrets/user-data.sh}"
 
 # Account's On-Demand Standard vCPU quota is 16; a c6a.xlarge is 4 vCPU, so at most 4 can run at
 # once. Enforce that here rather than letting AWS reject the launch with an opaque quota error.
@@ -56,6 +59,7 @@ launch_new_instance() {
 
   if [ ! -f "$USER_DATA_FILE" ]; then
     echo "error: user-data file not found at $USER_DATA_FILE" >&2
+    echo "copy enclave-server/user-data.sh.example to .secrets/user-data.sh (or point COBALT_USER_DATA at your own copy) and fill in the real values first." >&2
     exit 1
   fi
 

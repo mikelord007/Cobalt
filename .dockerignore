@@ -1,0 +1,52 @@
+# The docker build context is the REPO ROOT -- required so examples/<app>/mod.rs (the one and
+# only copy of each example app's source) is reachable by enclave-server/Containerfile. This file
+# is what stops that context from including the ~500 MB of frontend node_modules and the cargo
+# target/ dir that also live under this root.
+#
+# NOTE: .dockerignore patterns are ANCHORED AT THE CONTEXT ROOT, not gitignore-style any-depth.
+# `src` below means <root>/src (the Solidity sources) and does NOT touch enclave-server/src --
+# which is a build input. Use **/ for any-depth matching.
+
+# VCS + Foundry submodules (lib/ alone is ~17 MB of OpenZeppelin + forge-std)
+.git
+.gitmodules
+.gitattributes
+lib
+
+# Solidity sources, Foundry config and Foundry build state -- not enclave build inputs
+src
+script
+test
+out
+cache
+broadcast
+deployments
+foundry.toml
+foundry.lock
+remappings.txt
+
+# Frontends + node (web/ alone is hundreds of MB, almost all node_modules)
+web
+**/node_modules
+package.json
+package-lock.json
+scripts
+.bin-foundry
+
+# Operator-side tooling and docs -- never build inputs
+tools
+*.md
+
+# Local/operator state and generated artifacts. Mutable per-deploy state MUST be out of the
+# context so it can never perturb a build.
+.secrets
+.work
+.work-calldata
+.claude
+enclave-server/deployments
+enclave-server/instances.json
+enclave-server/out
+**/target
+enclave-server/src/nautilus-server/target
+*.eif
+*.pcrs

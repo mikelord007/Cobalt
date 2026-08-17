@@ -8,8 +8,20 @@ const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
 
-const REPO_ROOT = path.resolve(__dirname, "..");
-const registrar = require(path.join(REPO_ROOT, "tools", "registrar.js"));
+// Two distinct roots, deliberately not conflated:
+//  - PACKAGE_ROOT: wherever npm actually installed this package (global prefix, a local
+//    node_modules/, or this repo itself in dev). This is where the CLI's OWN code lives
+//    (tools/, scripts/) and where install-foundry.js's postinstall bundles Foundry -- fixed,
+//    always writable by whoever ran the install.
+//  - projectRoot (see resolveProjectRoot() below): the user's own Cobalt checkout -- where
+//    foundry.toml, lib/, script/, enclave-server/, examples/ and deployments/ live, and where
+//    every deploy writes its mutable state (.work-calldata/, enclave-server/deployments/, forge's
+//    out/cache/broadcast). Resolved fresh per command from the app directory, NOT assumed to be
+//    PACKAGE_ROOT -- a global install's directory is frequently root-owned/read-only, and the
+//    README's documented flow already requires a `git clone` to run `cobalt deploy` at all, so
+//    that clone is where deploy state should actually land.
+const PACKAGE_ROOT = path.resolve(__dirname, "..");
+const registrar = require(path.join(PACKAGE_ROOT, "tools", "registrar.js"));
 
 const DEFAULT_RPC_URL = "https://testnet-rpc.monad.xyz";
 const DEFAULT_SIGNER_TTL = "2592000"; // 30 days
@@ -20,8 +32,10 @@ const DEFAULT_SIGNER_TTL = "2592000"; // 30 days
 // from a postinstall, and often needs a fresh shell anyway). So every place below that shells out
 // to "cast"/"forge" resolves through here instead: bundled copy first, PATH second. This makes the
 // two ways Foundry can end up available (auto-installed vs. already installed some other way)
-// transparent to the rest of this file.
-const BUNDLED_FOUNDRY_DIR = path.join(REPO_ROOT, ".bin-foundry");
+// transparent to the rest of this file. Bundled under PACKAGE_ROOT, not projectRoot: it's
+// install-time state tied to this one npm install, reused across whatever project directories you
+// later point `cobalt` at.
+const BUNDLED_FOUNDRY_DIR = path.join(PACKAGE_ROOT, ".bin-foundry");
 
 function foundryBinName(name) {
   return process.platform === "win32" ? `${name}.exe` : name;
@@ -35,6 +49,66 @@ function resolveFoundryBin(name) {
 
 const CAST_BIN = resolveFoundryBin("cast");
 const FORGE_BIN = resolveFoundryBin("forge");
+
+// Walks up from an app directory looking for the nearest ancestor that looks like a real Cobalt
+// checkout (has both foundry.toml and enclave-server/), and uses that as the project root for
+// everything deploy-related: forge's cwd, .work-calldata/, enclave-server/deployments/,
+// deployments/monad-testnet.json. Falls back to PACKAGE_ROOT only if THAT happens to look like a
+// checkout too (true for a `git clone` used in place, false for a typical global npm install,
+// which no longer ships those files at all -- see package.json's "files"). Otherwise this is a
+// clear, fixable user error, not something to paper over by guessing.
+function hasProjectMarkers(dir) {
+  return fs.existsSync(path.join(dir, "foundry.toml")) && fs.existsSync(path.join(dir, "enclave-server"));
+}
+
+function resolveProjectRoot(startDir) {
+  let dir = startDir;
+  for (;;) {
+    if (hasProjectMarkers(dir)) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) break; // reached the filesystem root
+    dir = parent;
+  }
+  if (hasProjectMarkers(PACKAGE_ROOT)) return PACKAGE_ROOT;
+  throw new Error(
+    `could not find a Cobalt checkout (a directory containing both foundry.toml and enclave-server/) ` +
+      `above ${startDir}. "cobalt deploy"/"cobalt status" need to run against an app directory that's ` +
+      `inside a full checkout -- see the README's Install section ("git clone ... && cd Cobalt").`,
+  );
+}
+
+// Resolves a real POSIX shell to run enclave-server/deploy_and_attest.sh (and the --attest-cmd
+// escape hatch) through -- explicitly, as an argv[0], never via Node's `shell: true`. On win32,
+// `shell: true` always spawns cmd.exe regardless of which shell you typed this command into
+// (including Git Bash -- Node still shells out through cmd.exe, which can't find `bash` on the
+// PATH it gets, or even parse a POSIX-style PATH if it happens to inherit one). So this resolves
+// an actual bash.exe up front and calls it directly, with no shell layer in between.
+function resolveBash() {
+  if (process.env.COBALT_BASH) return process.env.COBALT_BASH;
+  if (process.platform !== "win32") return "/bin/bash";
+
+  const candidates = [
+    process.env.ProgramFiles && path.join(process.env.ProgramFiles, "Git", "bin", "bash.exe"),
+    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, "Programs", "Git", "bin", "bash.exe"),
+    process.env["ProgramFiles(x86)"] && path.join(process.env["ProgramFiles(x86)"], "Git", "bin", "bash.exe"),
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  try {
+    const found = execFileSync("where.exe", ["bash"], { encoding: "utf8" }).split(/\r?\n/)[0].trim();
+    if (found) return found;
+  } catch {
+    // where.exe found nothing (or isn't itself on PATH) -- fall through to the error below.
+  }
+  throw new Error(
+    "no bash found. The attest step runs a real bash script (enclave-server/deploy_and_attest.sh) and " +
+      "needs a real POSIX shell -- Windows has none built in. Install Git for Windows " +
+      "(https://git-scm.com/downloads/win), which bundles one, or run this whole command from inside WSL " +
+      "(https://learn.microsoft.com/windows/wsl/install) instead, where cobalt runs as a normal Linux CLI " +
+      "with no special-casing needed. Set $COBALT_BASH to point at a specific bash.exe directly.",
+  );
+}
 
 function main() {
   const [, , command, ...rest] = process.argv;
@@ -90,13 +164,14 @@ async function deployCommand(args) {
     console.error(`error: app directory does not exist: ${appDir}`);
     process.exit(1);
   }
+  const projectRoot = resolveProjectRoot(appDir);
 
   checkFoundryOnPath();
   const privateKey = requireEnv("PRIVATE_KEY");
   const from = castWalletAddress(privateKey);
 
   const config = loadAppConfig(appDir);
-  const chainDefaults = loadChainDefaults();
+  const chainDefaults = loadChainDefaults(projectRoot);
 
   const appName = options["app-name"] || config.name || path.basename(appDir);
   const appId = normalizeBytes32(options["app-id"] || config.appId || keccak256Hex(appName));
@@ -113,7 +188,7 @@ async function deployCommand(args) {
   console.log(`==> deploying "${appName}" (appId ${appId})`);
 
   // 1. attest
-  const manifest = await resolveManifest(appDir, options, appName);
+  const manifest = await resolveManifest(appDir, options, appName, projectRoot);
   console.log(`==> attestation ready: eth_address ${manifest.eth_address}`);
   console.log(`    pcr0 ${manifest.pcrs.pcr0}`);
   console.log(`    pcr1 ${manifest.pcrs.pcr1}`);
@@ -143,12 +218,12 @@ async function deployCommand(args) {
   if (!alreadyAllowed) {
     console.log(`==> image not yet allowed (pcrSetHash ${pcrSetHash}), calling setAllowedImage`);
     if (!dryRun) {
-      const outDir = path.join(REPO_ROOT, ".work-calldata", `allow-image-${sanitize(appName)}`);
+      const outDir = path.join(projectRoot, ".work-calldata", `allow-image-${sanitize(appName)}`);
       const plan = await registrar.planAllowImage({
         appId, pcr0: manifest.pcrs.pcr0, pcr1: manifest.pcrs.pcr1, pcr2: manifest.pcrs.pcr2,
         registry, rpcUrl, from, outDir,
       });
-      broadcastCalldataDir(outDir, { rpcUrl, privateKey, from });
+      broadcastCalldataDir(outDir, { rpcUrl, privateKey, from, projectRoot });
       void plan;
     }
   } else {
@@ -159,11 +234,11 @@ async function deployCommand(args) {
   // meaningful revert (SignerAlreadyRegistered), not something to silently swallow.
   console.log("==> registering the enclave's attestation");
   if (!dryRun) {
-    const outDir = path.join(REPO_ROOT, ".work-calldata", `register-${sanitize(appName)}`);
+    const outDir = path.join(projectRoot, ".work-calldata", `register-${sanitize(appName)}`);
     await registrar.planRegister({
       attestation: manifest.attestation, appId, certManager, validator, registry, rpcUrl, from, outDir,
     });
-    broadcastCalldataDir(outDir, { rpcUrl, privateKey, from });
+    broadcastCalldataDir(outDir, { rpcUrl, privateKey, from, projectRoot });
   }
 
   // 5. verify
@@ -194,10 +269,11 @@ function statusCommand(args) {
   }
   const appDir = path.resolve(args[0]);
   const options = parseFlags(args.slice(1));
+  const projectRoot = resolveProjectRoot(appDir);
 
   checkFoundryOnPath();
   const config = loadAppConfig(appDir);
-  const chainDefaults = loadChainDefaults();
+  const chainDefaults = loadChainDefaults(projectRoot);
 
   const appName = options["app-name"] || config.name || path.basename(appDir);
   const appId = normalizeBytes32(options["app-id"] || config.appId || keccak256Hex(appName));
@@ -218,7 +294,7 @@ function statusCommand(args) {
   console.log(`signerTTL  ${signerTTL}s`);
   console.log(`paused     ${paused}`);
 
-  const deployManifestPath = path.join(REPO_ROOT, "enclave-server", "deployments", appName, "manifest.json");
+  const deployManifestPath = path.join(projectRoot, "enclave-server", "deployments", appName, "manifest.json");
   if (fs.existsSync(deployManifestPath)) {
     const manifest = JSON.parse(fs.readFileSync(deployManifestPath, "utf8"));
     const valid = isValidSigner(registry, appId, manifest.eth_address, rpcUrl);
@@ -230,7 +306,7 @@ function statusCommand(args) {
 // manifest resolution (the attest step)
 // ---------------------------------------------------------------------------------------------
 
-async function resolveManifest(appDir, options, appName) {
+async function resolveManifest(appDir, options, appName, projectRoot) {
   if (options["attestation"]) {
     const eth = options["eth-address"];
     if (!eth) throw new Error("--eth-address is required alongside --attestation");
@@ -238,32 +314,45 @@ async function resolveManifest(appDir, options, appName) {
       attestation: options["attestation"],
       pcrs: { pcr0: requireOpt(options, "pcr0"), pcr1: requireOpt(options, "pcr1"), pcr2: requireOpt(options, "pcr2") },
       eth_address: eth,
-    });
+    }, projectRoot);
   }
 
   let manifest;
   if (options["manifest-path"]) {
     manifest = JSON.parse(fs.readFileSync(path.resolve(options["manifest-path"]), "utf8"));
   } else {
-    const cmd = options["attest-cmd"] || defaultAttestCmd(appDir, options, appName);
-    console.log(`==> running attest command: ${cmd}`);
-    const stdout = execFileSync(cmd, { shell: true, cwd: REPO_ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
+    const bash = resolveBash();
+    let stdout;
+    if (options["attest-cmd"]) {
+      // Escape hatch for a fully custom attest command -- still a shell string by nature (it's
+      // meant to be arbitrary), so it still needs a real shell to interpret it. Explicit
+      // `bash -c`, never Node's shell:true (which on Windows always means cmd.exe, and cmd.exe
+      // can neither run bash syntax nor reliably find `bash` itself -- see resolveBash()).
+      console.log(`==> running attest command: ${options["attest-cmd"]}`);
+      stdout = execFileSync(bash, ["-c", options["attest-cmd"]], {
+        cwd: projectRoot, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"],
+      });
+    } else {
+      const secrets = options["secrets"];
+      if (!secrets) throw new Error("--secrets is required for the default attest command");
+      const secretsPath = path.isAbsolute(secrets) ? secrets : path.join(appDir, secrets);
+      if (!fs.existsSync(secretsPath)) throw new Error(`secrets file does not exist: ${secretsPath}`);
+      const scriptPath = path.join(projectRoot, "enclave-server", "deploy_and_attest.sh");
+      // Argv array, not a shell string: no quoting layer needed here at all, and it behaves
+      // identically whether `bash` turns out to be Git Bash, WSL's bash, or a native one.
+      console.log(`==> running attest command: ${bash} ${scriptPath} ${appName} --secrets ${secretsPath}`);
+      stdout = execFileSync(bash, [scriptPath, appName, "--secrets", secretsPath], {
+        cwd: projectRoot, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"],
+      });
+    }
     manifest = parseManifestFromStdout(stdout);
     if (!manifest) {
-      const fallbackPath = path.join(REPO_ROOT, "enclave-server", "deployments", appName, "manifest.json");
+      const fallbackPath = path.join(projectRoot, "enclave-server", "deployments", appName, "manifest.json");
       if (fs.existsSync(fallbackPath)) manifest = JSON.parse(fs.readFileSync(fallbackPath, "utf8"));
     }
     if (!manifest) throw new Error("could not resolve a deploy manifest from the attest command's output");
   }
-  return normalizeManifest(manifest);
-}
-
-function defaultAttestCmd(appDir, options, appName) {
-  const secrets = options["secrets"];
-  if (!secrets) throw new Error("--secrets is required for the default attest command");
-  const secretsPath = path.isAbsolute(secrets) ? secrets : path.join(appDir, secrets);
-  if (!fs.existsSync(secretsPath)) throw new Error(`secrets file does not exist: ${secretsPath}`);
-  return `bash enclave-server/deploy_and_attest.sh ${shellQuote(appName)} --secrets ${shellQuote(secretsPath)}`;
+  return normalizeManifest(manifest, projectRoot);
 }
 
 function parseManifestFromStdout(stdout) {
@@ -279,7 +368,7 @@ function parseManifestFromStdout(stdout) {
   return null;
 }
 
-function normalizeManifest(manifest) {
+function normalizeManifest(manifest, projectRoot) {
   if (!manifest.pcrs || !manifest.pcrs.pcr0 || !manifest.pcrs.pcr1 || !manifest.pcrs.pcr2) {
     throw new Error("manifest is missing pcr0/pcr1/pcr2");
   }
@@ -287,7 +376,7 @@ function normalizeManifest(manifest) {
   if (!attestation && manifest.attestation_path) {
     const attestationPath = path.isAbsolute(manifest.attestation_path)
       ? manifest.attestation_path
-      : path.join(REPO_ROOT, manifest.attestation_path);
+      : path.join(projectRoot, manifest.attestation_path);
     attestation = JSON.parse(fs.readFileSync(attestationPath, "utf8")).attestation;
   }
   if (!attestation) throw new Error("manifest has neither attestation nor attestation_path");
@@ -361,14 +450,17 @@ function preflightBalanceCheck(dir, { rpcUrl, from }) {
   }
 }
 
-function broadcastCalldataDir(dir, { rpcUrl, privateKey, from, gasMultiplier = "110" }) {
+function broadcastCalldataDir(dir, { rpcUrl, privateKey, from, projectRoot, gasMultiplier = "110" }) {
   preflightBalanceCheck(dir, { rpcUrl, from });
   const out = execFileSync(
     FORGE_BIN,
     ["script", "script/SubmitCalldataDir.s.sol:SubmitCalldataDir", "--rpc-url", rpcUrl, "--broadcast", "-g", String(gasMultiplier)],
     {
-      cwd: REPO_ROOT,
-      env: { ...process.env, CALLDATA_DIR: dir, PRIVATE_KEY: privateKey },
+      cwd: projectRoot,
+      // Forward slashes even on Windows: script/SubmitCalldataDir.s.sol concatenates this with
+      // "/txN_calldata.txt" directly, and foundry.toml's fs_permissions matching is
+      // separator-sensitive -- a raw Windows path here (backslashes) has been observed to trip it.
+      env: { ...process.env, CALLDATA_DIR: toPosixPath(dir), PRIVATE_KEY: privateKey },
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 10 * 60 * 1000, // never hang silently, regardless of root cause -- fail loudly after 10 minutes
@@ -387,8 +479,8 @@ function loadAppConfig(appDir) {
   return JSON.parse(fs.readFileSync(configPath, "utf8"));
 }
 
-function loadChainDefaults() {
-  const deployPath = path.join(REPO_ROOT, "deployments", "monad-testnet.json");
+function loadChainDefaults(projectRoot) {
+  const deployPath = path.join(projectRoot, "deployments", "monad-testnet.json");
   if (!fs.existsSync(deployPath)) return {};
   const d = JSON.parse(fs.readFileSync(deployPath, "utf8"));
   return { rpcUrl: d.rpcUrl, registry: d.enclaveRegistry, certManager: d.certManager, validator: d.nitroValidator };
@@ -437,9 +529,11 @@ function checkFoundryOnPath() {
             `Foundry (cast + forge) to be installed -- if you installed via "npm install -g cobalt-tee" this ` +
             `should have happened automatically; check the npm install output above for a Foundry auto-install ` +
             `warning. Otherwise see https://getfoundry.sh to install it manually. If you already installed it, ` +
-            `this may just be a PATH issue for the shell you're running in (foundryup's installer sometimes ` +
-            `only wires it into Unix-style shell profiles, not PowerShell/cmd): try running this command from ` +
-            `Git Bash instead, or add "%USERPROFILE%\\.foundry\\bin" to your PATH and open a new terminal.`,
+            `this is likely a PATH issue: foundryup sometimes only wires "%USERPROFILE%\\.foundry\\bin" into ` +
+            `Unix-style shell profiles, not PowerShell/cmd. Add it to your PATH yourself and open a brand new ` +
+            `terminal -- note that simply running cobalt from inside Git Bash does not reliably fix this on its ` +
+            `own, since Git Bash can hand Node a POSIX-style PATH that this same lookup can't parse either; ` +
+            `WSL (where cobalt runs as a normal Linux CLI) is the more reliable fallback if a PATH edit doesn't work.`,
         );
       }
       // Any other failure (e.g. a non-zero exit from --version) means the binary exists and is
@@ -453,8 +547,8 @@ function sanitize(name) {
   return name.replace(/[^a-zA-Z0-9._-]/g, "-");
 }
 
-function shellQuote(value) {
-  return `"${String(value).replace(/(["\\$`])/g, "\\$1")}"`;
+function toPosixPath(value) {
+  return value.split(path.sep).join("/");
 }
 
 function normalizeBytes32(value) {

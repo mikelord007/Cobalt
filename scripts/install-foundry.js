@@ -69,14 +69,26 @@ function foundryAlreadyAvailable() {
 // Verified against the real `foundry-rs/foundry` v1.7.1 release assets (GitHub API, checked live):
 //   foundry_v1.7.1_darwin_amd64.tar.gz   foundry_v1.7.1_darwin_arm64.tar.gz
 //   foundry_v1.7.1_linux_amd64.tar.gz    foundry_v1.7.1_linux_arm64.tar.gz
+//   foundry_v1.7.1_alpine_amd64.tar.gz   foundry_v1.7.1_alpine_arm64.tar.gz
 //   foundry_v1.7.1_win32_amd64.zip
-// (there's also an `alpine_{amd64,arm64}` musl variant for Docker, and no win32_arm64 asset --
-// neither is relevant here.) Each archive is FLAT: forge/cast/anvil/chisel (or *.exe) sit directly
-// at the archive root, no nested directory.
+// (there's no win32_arm64 asset -- not relevant here.) Each archive is FLAT: forge/cast/anvil/
+// chisel (or *.exe) sit directly at the archive root, no nested directory.
 // ---------------------------------------------------------------------------------------------
 
+// True on musl libc (Alpine and similar) -- glibcVersionRuntime is present in process.report only
+// when the running Node binary is itself linked against glibc. Without this check, Alpine gets
+// the glibc `linux` asset by default, which fails the runnability probe in installFoundry() below
+// and silently deletes the whole bundle with just a warning (see main()'s catch block).
+function isMusl() {
+  try {
+    return process.report.getReport().header.glibcVersionRuntime === undefined;
+  } catch {
+    return false; // process.report unavailable (very old Node) -- assume glibc, the common case
+  }
+}
+
 function detectTarget() {
-  const platformMap = { linux: "linux", darwin: "darwin", win32: "win32" };
+  const platformMap = { linux: isMusl() ? "alpine" : "linux", darwin: "darwin", win32: "win32" };
   const archMap = { x64: "amd64", arm64: "arm64" };
   const platform = platformMap[process.platform];
   const arch = archMap[process.arch];
@@ -181,15 +193,33 @@ function extractTarGz(archivePath, destDir) {
 }
 
 function extractZip(archivePath, destDir) {
-  // Deliberately NOT using `tar` here even though modern Windows ships a tar.exe that can (in
-  // theory) read zip via libarchive: verified live on a real Windows 11 box that when Git for
-  // Windows is installed (extremely common on dev machines), its GNU tar.exe shadows the Windows
-  // one on PATH, and GNU tar cannot read zip archives at all ("This does not look like a tar
-  // archive"). PowerShell's Expand-Archive is bundled with every Windows 10/11 install (PowerShell
-  // 5.1+) and was verified live here to extract this exact archive correctly, so it's the reliable
-  // choice on win32.
+  // Deliberately NOT using a plain `tar` on PATH here even though modern Windows ships one that
+  // can (in theory) read zip via libarchive: verified live on a real Windows 11 box that when Git
+  // for Windows is installed (extremely common on dev machines), its GNU tar.exe shadows the
+  // Windows one on PATH, and GNU tar cannot read zip archives at all ("This does not look like a
+  // tar archive"). PowerShell's Expand-Archive is bundled with every Windows 10/11 install
+  // (PowerShell 5.1+) and was verified live here to extract this exact archive correctly, so it's
+  // tried first -- but it isn't universal (some trimmed Server Core / CI images lack Windows
+  // PowerShell on PATH while having pwsh, or neither). Fall back to `pwsh` (PowerShell 7+, also
+  // Expand-Archive), then to the real Windows-native tar.exe by its ABSOLUTE path under
+  // %SystemRoot%\System32 -- bypassing PATH entirely sidesteps the Git-Bash-shadowing problem
+  // above, since this is specifically Microsoft's own libarchive-based tar, not GNU tar.
   const psCommand = `Expand-Archive -LiteralPath '${archivePath.replace(/'/g, "''")}' -DestinationPath '${destDir.replace(/'/g, "''")}' -Force`;
-  execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", psCommand], { stdio: "pipe" });
+  const attempts = [
+    () => execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", psCommand], { stdio: "pipe" }),
+    () => execFileSync("pwsh", ["-NoProfile", "-NonInteractive", "-Command", psCommand], { stdio: "pipe" }),
+    () => execFileSync(path.join(process.env.SystemRoot || "C:\\Windows", "System32", "tar.exe"), ["-xf", archivePath, "-C", destDir], { stdio: "pipe" }),
+  ];
+  let lastErr;
+  for (const attempt of attempts) {
+    try {
+      attempt();
+      return;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw new Error(`could not extract ${archivePath}: tried powershell.exe, pwsh and System32\\tar.exe, all failed (last error: ${lastErr && lastErr.message})`);
 }
 
 // ---------------------------------------------------------------------------------------------

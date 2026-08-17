@@ -6,15 +6,14 @@ const INSTALL_CMD = "npm install -g cobalt-tee";
 
 /**
  * Copy-to-clipboard command widget for the landing page, in the style of CLI tool landing
- * pages (Vite/Astro/Bun, etc). Styled via the .install-widget rules in ../landing.css (same
- * surface/border/mono-font terminal convention as the .terminal block on the page). Isolated
+ * pages (Vite/Astro/Bun, etc). Styled via the .install-widget rules in ../landing.css. Isolated
  * into its own client component -- rather than making the whole landing page a client
  * component -- since copy-to-clipboard is the only interactive bit on an otherwise
  * static/server-rendered page.
  *
  * Two usages share this component and its copy mechanism:
  *  - the hero's single-line "npm install -g cobalt-tee" pill (default, no props needed)
- *  - the terminal section's multi-line "try it for real" block, via the `lines` prop: an
+ *  - the "THE COMMAND" section's multi-line "try it for real" block, via the `lines` prop: an
  *    array of either plain strings, or `{ text, placeholder: true }` for a line that contains
  *    a value the visitor must substitute (rendered in the accent color so it reads as a
  *    template, not a real credential). A line whose text starts with "#" renders as a

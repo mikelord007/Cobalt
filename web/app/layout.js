@@ -3,6 +3,13 @@ import "./globals.css";
 import SiteNav from "./components/SiteNav";
 
 export const metadata = {
+  // Anchors every route's relative OG/Twitter image URLs (including app/opengraph-image.png)
+  // into absolute ones. Set on the ROOT layout, not a single page, since it's what every route's
+  // metadata resolution falls back to -- without it here, /viewer, /trust and /waitlist would
+  // each resolve their preview image against "http://localhost:3000" in production, not just "/".
+  // Deploy target is Vercel, at the URL the README's "Live" section and the on-page dashboard
+  // link both already use.
+  metadataBase: new URL("https://cobalt-alpha-five.vercel.app"),
   title: "Cobalt — TEE infrastructure for Monad",
   description:
     "Deploy your app into an AWS Nitro Enclave with one command. Monad verifies exactly which code ran. Live on Monad testnet.",

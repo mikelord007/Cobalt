@@ -14,11 +14,15 @@ fi
 
 APP="$1"
 shift
+if [ -z "$APP" ]; then
+  echo "error: app name must not be empty" >&2
+  exit 1
+fi
 
 SECRETS_PATH=""
 INSTANCE_IP=""
 SSH_USER="ec2-user"
-SSH_KEY="$HOME/kp-1.pem"
+SSH_KEY="${COBALT_SSH_KEY:-$HOME/kp-1.pem}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -31,6 +35,7 @@ while [ $# -gt 0 ]; do
 done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 for tool in aws ssh scp curl; do
   if ! command -v "$tool" >/dev/null 2>&1; then
@@ -74,8 +79,32 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 # and boot instead of recompiling. Hash every tracked source file's own content (not the tarball
 # we ship, which would vary with mtimes/compression) so the skip-check is a fast, deterministic
 # S3 head-object before any SSH or build work happens.
+#
+# Portable sha256: coreutils on Linux, `shasum -a 256` on macOS (which ships no sha256sum).
+SHA256="$(command -v sha256sum || echo 'shasum -a 256')"
 echo "==> computing source hash" >&2
-SOURCE_HASH=$(cd "$SCRIPT_DIR" && find . \( -path ./out -o -path ./src/nautilus-server/target \) -prune -o -type f -print | sort | xargs sha256sum | sha256sum | awk '{print $1}')
+# An ALLOWLIST of build inputs, not `find .` over all of enclave-server/. The old form also swept
+# deployments/<app>/{manifest,attestation}.json and instances.json -- files THIS script and
+# provisioner.sh write on every run -- so the "cache key" changed on every deploy and the S3
+# head-object below could never hit. These five entries are exactly what the Containerfile
+# consumes (see enclave-server/Containerfile); if a COPY source is ever added there, add it here
+# too. Scoped to examples/$APP specifically, not all of examples/, so editing dice can't
+# invalidate ping's cache.
+#
+# -print0/xargs -0 handles paths with spaces; LC_ALL=C sort is applied to the per-file digest
+# lines (not the file list), which makes the result byte-identical across operators, locales and
+# find implementations without depending on GNU-only `sort -z`. xargs may split into several
+# sha256 invocations for a long file list -- sorting the combined output makes that irrelevant.
+SOURCE_HASH=$(cd "$REPO_ROOT" && find \
+    enclave-server/src/nautilus-server \
+    "examples/$APP" \
+    enclave-server/Containerfile \
+    enclave-server/Makefile \
+    .dockerignore \
+    -path enclave-server/src/nautilus-server/target -prune -o -type f -print0 \
+  | xargs -0 $SHA256 \
+  | LC_ALL=C sort \
+  | $SHA256 | awk '{print $1}')
 echo "==> source hash: $SOURCE_HASH" >&2
 
 S3_PREFIX="s3://$BUCKET/$APP/$SOURCE_HASH"
@@ -100,22 +129,46 @@ if [ "$CACHE_HIT" = "1" ]; then
 else
   echo "==> no cached artifact -- shipping source and building on $INSTANCE_IP" >&2
 
-  # 1. Ship.
-  tar -C "$SCRIPT_DIR" --exclude=src/nautilus-server/target --exclude=out -czf - . | \
-    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "$SSH_USER@$INSTANCE_IP" "mkdir -p ~/deployments/$APP && tar -xzf - -C ~/deployments/$APP"
-  remote "find ~/deployments/$APP -name '*.sh' -exec sed -i 's/\r\$//' {} +"
+  # 1. Ship. Tar ROOT is the repo root so the archive carries repo-root-relative paths
+  # (./enclave-server/..., ./examples/...) -- the layout the Containerfile's four-`..` #[path]
+  # depends on (see enclave-server/src/nautilus-server/src/lib.rs). Tar MEMBERS stay scoped to
+  # just the two trees plus .dockerignore, so this stays small even though the root is wide.
+  # COPYFILE_DISABLE=1 stops bsdtar (macOS) from embedding AppleDouble `._*` entries; harmless on
+  # Linux/GNU tar.
+  #
+  # Extracted into a build/ subdir, wiped first: tar overwrites but never deletes, so without the
+  # rm -rf a file removed in this revision (e.g. an app that used to live under
+  # enclave-server/src/nautilus-server/src/apps/) would linger from a previous deploy and get
+  # COPY'd into the image. The subdir is what makes that rm safe -- this app's runtime state
+  # (secrets.json, enclave_id, socat.log, out/) lives one level up in ~/deployments/$APP/ and is
+  # untouched.
+  COPYFILE_DISABLE=1 tar -C "$REPO_ROOT" \
+      --exclude=./enclave-server/src/nautilus-server/target \
+      --exclude=./enclave-server/out \
+      --exclude=./enclave-server/deployments \
+      --exclude='*.eif' --exclude='*.pcrs' \
+      -czf - ./.dockerignore ./enclave-server ./examples | \
+    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "$SSH_USER@$INSTANCE_IP" \
+      "rm -rf ~/deployments/$APP/build && mkdir -p ~/deployments/$APP/build && tar -xzf - -C ~/deployments/$APP/build"
+  # Widened beyond *.sh: a CRLF Makefile/Containerfile recipe line fails with a much less
+  # legible "/bin/sh: ^M: not found" than a shell script does.
+  remote "find ~/deployments/$APP/build \( -name '*.sh' -o -name Makefile -o -name Containerfile \) -exec sed -i 's/\r\$//' {} +"
 
   # 2. Build, detached + polled. A background job on the remote returns SSH control almost
   # immediately -- the ssh command finishing is not evidence of anything, so never trust it as a
   # signal of build progress; always poll remote state directly instead.
-  remote "cd ~/deployments/$APP && setsid nohup make ENCLAVE_APP=$APP > build.log 2>&1 < /dev/null & disown -a"
+  remote "cd ~/deployments/$APP/build/enclave-server && setsid nohup make ENCLAVE_APP=$APP > ~/deployments/$APP/build.log 2>&1 < /dev/null & disown -a"
 
   echo "==> build launched, polling (ceiling ~90 minutes)" >&2
   ELAPSED=0
   CEILING=5400
   while :; do
-    if remote "test -f ~/deployments/$APP/out/nitro.pcrs"; then
+    if remote "test -f ~/deployments/$APP/build/enclave-server/out/nitro.pcrs"; then
       echo "==> build succeeded" >&2
+      # Promote to the single canonical artifact location, ~/deployments/$APP/out/ -- the same
+      # one the S3 cache-hit branch above writes to, so the scp-down below and the run-enclave
+      # step later are identical on both paths.
+      remote "mkdir -p ~/deployments/$APP/out && cp ~/deployments/$APP/build/enclave-server/out/nitro.eif ~/deployments/$APP/out/nitro.eif && cp ~/deployments/$APP/build/enclave-server/out/nitro.pcrs ~/deployments/$APP/out/nitro.pcrs"
       break
     fi
     # `make`'s recipe runs `docker build` and then `nitro-cli build-enclave` in sequence -- once

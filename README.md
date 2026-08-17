@@ -41,7 +41,9 @@ the `ping` example's `appId`, and `VERIFICATION.md` for how verification was don
 - **`enclave-server/`** — a reusable Rust server template that runs inside the enclave: a fresh
   secp256k1 keypair per boot, hand-rolled EIP-712 signing, an AWS NSM attestation endpoint with
   the signing key explicitly bound, an outbound-network allowlist, and attestation-gated KMS
-  secrets. Apps are drop-in modules under `src/nautilus-server/src/apps/`.
+  secrets. Apps are drop-in modules that live in the repo's top-level `examples/<name>/`, wired
+  in by a one-line `#[path]` include in `enclave-server/src/nautilus-server/src/lib.rs` — the app
+  code itself never lives inside `enclave-server/`.
 - **`tools/cobalt.js`** — the CLI. `cobalt deploy <app-dir>` runs attest → createApp →
   setAllowedImage → registerEnclave → verify against the already-deployed registry, end to end.
 - **`tools/registrar.js`** — turns a raw attestation into an on-chain transaction plan, handling
@@ -53,14 +55,36 @@ the `ping` example's `appId`, and `VERIFICATION.md` for how verification was don
 
 ## Deploying an app with the CLI
 
-The common case: you have your own app logic and want it running in an enclave, registered
-against the already-deployed, already-live Cobalt registry on Monad testnet (the addresses
-above). You do **not** need to deploy your own contracts or run your own EC2 fleet for this —
-just use the existing platform.
+`cobalt deploy` registers against the already-deployed, already-live Cobalt **registry contracts**
+on Monad testnet (the addresses above) — you don't need to deploy your own copy of those. It does
+**not**, however, give you someone else's enclave-hosting infrastructure for free: the CLI drives
+your own AWS account over SSH to build and boot the enclave, so you need your own EC2 setup first
+(key pair, security group, user-data — see "Enclave host setup" under "Running the whole platform
+yourself" below) before `cobalt deploy` can actually launch anything.
+
+**Want to see the platform work without any AWS setup?**
+
+```
+npm install -g cobalt-tee
+git clone https://github.com/mikelord007/Cobalt.git   # no --recurse-submodules needed for this --
+cd Cobalt                                              # status never touches lib/ or runs forge
+cobalt status examples/ping
+```
+
+Reads the live registry state on Monad testnet for the deployed `ping` app — no key, no AWS
+account. Still needs the clone (`cobalt` looks for `deployments/monad-testnet.json` alongside
+`foundry.toml`/`enclave-server/` to know which registry to read), but it's the fast, plain clone —
+just the two commands above, done in seconds.
 
 ### Prerequisites
 
-- Node 18+
+- Node 18+.
+- **Windows**: run `cobalt` from [Git Bash](https://git-scm.com/downloads/win) or from inside
+  [WSL](https://learn.microsoft.com/windows/wsl/install) — the attest step shells out to a real
+  bash script (`enclave-server/deploy_and_attest.sh`) that plain PowerShell/cmd.exe can't run.
+  `cobalt status`, which never needs bash, works from any Windows shell.
+- An AWS account with EC2 permissions and the AWS CLI configured (`aws configure`), an EC2 key
+  pair, and a security group — see "Enclave host setup" below. Not needed for `cobalt status`.
 - A funded Monad testnet wallet. Get testnet MON from `https://faucet.monad.xyz`.
 - Foundry (`forge`/`cast`) — `npm install -g cobalt-tee`'s `postinstall` script tries to
   auto-install Foundry for you if it isn't already on `PATH` (downloads the official release
@@ -75,16 +99,24 @@ just use the existing platform.
 
 ```
 npm install -g cobalt-tee
-export PRIVATE_KEY=0x...   # a funded Monad testnet key
+export PRIVATE_KEY=0x...   # a funded Monad testnet key -- PowerShell: $env:PRIVATE_KEY = "0x..."
 ```
 
 ### Deploy an example
 
 ```
-git clone https://github.com/mikelord007/Cobalt.git
+git clone --recurse-submodules https://github.com/mikelord007/Cobalt.git
 cd Cobalt
 cobalt deploy examples/dice --secrets env.json
 ```
+
+`cobalt` resolves your project checkout by walking up from `<app-dir>` looking for `foundry.toml` +
+`enclave-server/`, so this clone is load-bearing — it's where `forge`'s build artifacts and the
+CLI's other working state land, not just where the example configs happen to live. `--recurse-submodules`
+matters here too: `lib/forge-std` and `lib/openzeppelin-contracts` are git submodules (see
+`.gitmodules`), and `cobalt deploy` runs `forge script` against this exact checkout, so a clone
+without them fails partway through with a "Source not found" error from `forge`. Already have a
+clone without it? `git submodule update --init --recursive` fixes it in place.
 
 (`examples/ping/` — the pipeline proof-of-concept, send a message, get an EIP-712-signed reply —
 works the same way: `cobalt deploy examples/ping --secrets env.json`.)
@@ -150,6 +182,10 @@ it, run `git submodule update --init --recursive` instead of `forge install`.
 Deploy the contract stack in order — each one's constructor takes the previous one's address, so
 this order is not optional:
 
+PowerShell users: replace every `export VAR=value` below with `$env:VAR = "value"`, and
+`\`-continued lines with a trailing `` ` `` (backtick) instead of `\`, or just run the whole block
+from Git Bash / WSL, where it works unmodified.
+
 ```
 export PRIVATE_KEY=0x...
 export RPC_URL=https://testnet-rpc.monad.xyz   # or your own target chain
@@ -198,11 +234,13 @@ process, it's the actual automation, and it's worth reading directly. The key fa
   instance).
 - **Cloud-init / user-data** that installs `aws-nitro-enclaves-cli`, Docker, and `socat`, and
   configures the Nitro allocator (`memory_mib` / `cpu_count` in
-  `/etc/nitro_enclaves/allocator.yaml`) — `.secrets/user-data.sh` (gitignored; not shipped in this
-  repo, since it's account-specific — you write your own) is exactly this: it `dnf install`s the
-  Nitro CLI, Docker, socat, git, make, and jq, adds `ec2-user` to the `docker`/`ne` groups, starts
-  the allocator and vsock-proxy services, sets the allocator to 3072 MiB / 2 CPUs, and opens a
-  vsock-proxy allowlist entry for KMS.
+  `/etc/nitro_enclaves/allocator.yaml`). Copy `enclave-server/user-data.sh.example` to
+  `.secrets/user-data.sh` (gitignored, so `provisioner.sh` expects you to put your own copy there
+  — or point `$COBALT_USER_DATA` at one elsewhere). Nothing in the template is actually secret; it
+  lives outside version control as operator-side infra config, not private data. It `dnf install`s
+  the Nitro CLI, Docker, socat, git, make, and jq, adds `ec2-user` to the `docker`/`ne` groups,
+  starts the allocator and vsock-proxy services, sets the allocator to 3072 MiB / 2 CPUs, and opens
+  a vsock-proxy allowlist entry for KMS.
 
 `provisioner.sh acquire <app>` automates the actual launch end to end — it checks existing
 instances for spare physical-core capacity, and if nothing has room, launches a fresh `c6a.xlarge`

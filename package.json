@@ -6,11 +6,17 @@
     "cobalt": "tools/cobalt.js"
   },
   "scripts": {
-    "postinstall": "node scripts/install-foundry.js"
+    "postinstall": "node scripts/install-foundry.js",
+    "prepack": "node scripts/prepack-guard.js"
   },
   "engines": {
     "node": ">=18"
   },
+  "files": [
+    "tools",
+    "scripts",
+    "README.md"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",

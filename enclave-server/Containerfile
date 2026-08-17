@@ -15,11 +15,21 @@
 FROM rust@sha256:f6c22e0a256c05d44fca23bf530120b5d4a6249a393734884281ca80782329bc AS build
 RUN rustup target add x86_64-unknown-linux-musl
 RUN apk add --no-cache musl-dev
-WORKDIR /src
-COPY src/nautilus-server /src/nautilus-server
-WORKDIR /src/nautilus-server
-ENV RUSTFLAGS="-C target-feature=+crt-static"
+# The build context is the REPO ROOT (see enclave-server/Makefile) and the repo-root-relative
+# layout is reproduced verbatim under /build. That is the whole trick: `#[path =
+# "../../../../examples/<app>/mod.rs"]` in src/lib.rs resolves to the SAME file here as on a
+# developer's checkout, because four `..` from /build/enclave-server/src/nautilus-server/src land
+# on /build exactly as four `..` from <repo>/enclave-server/src/nautilus-server/src land on
+# <repo>. Every intermediate directory in that chain exists here, which matters: Linux resolves
+# `..` against the real filesystem (unlike Windows, which normalizes it lexically), so a chain
+# through a phantom directory would fail HERE while still compiling on a Windows dev box.
 ARG ENCLAVE_APP
+COPY enclave-server/src/nautilus-server /build/enclave-server/src/nautilus-server
+# Only THIS app: the other apps' `mod`s are #[cfg]-gated off and rustc never opens their files,
+# and narrowing the copy keeps an edit to one example from busting another example's layer cache.
+COPY examples/${ENCLAVE_APP} /build/examples/${ENCLAVE_APP}
+WORKDIR /build/enclave-server/src/nautilus-server
+ENV RUSTFLAGS="-C target-feature=+crt-static"
 RUN cargo build --locked --no-default-features --features $ENCLAVE_APP --release --target x86_64-unknown-linux-musl
 
 FROM alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc AS final
@@ -28,10 +38,13 @@ FROM alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b
 # applet brings up loopback (there's no other network config inside the enclave).
 RUN apk add --no-cache socat jq
 ARG ENCLAVE_APP
-COPY --from=build /src/nautilus-server/target/x86_64-unknown-linux-musl/release/nautilus-server /nautilus-server
-COPY src/nautilus-server/run.sh /run.sh
-COPY src/nautilus-server/allowed_endpoints.yaml /allowed_endpoints.yaml
-COPY src/nautilus-server/src/apps/${ENCLAVE_APP}/allowed_endpoints.yaml /allowed_endpoints.yaml
+COPY --from=build /build/enclave-server/src/nautilus-server/target/x86_64-unknown-linux-musl/release/nautilus-server /nautilus-server
+COPY enclave-server/src/nautilus-server/run.sh /run.sh
+# common.rs reads this relative to CWD, and WORKDIR below is / -- so it lands at
+# /allowed_endpoints.yaml. One COPY, not two: there used to be a generic fallback copy here that
+# was unconditionally overwritten by the app-specific one on the very next line -- it was never a
+# real fallback, since a missing app file hard-fails this COPY either way.
+COPY examples/${ENCLAVE_APP}/allowed_endpoints.yaml /allowed_endpoints.yaml
 RUN chmod +x /run.sh /nautilus-server
 WORKDIR /
 ENTRYPOINT ["/run.sh"]

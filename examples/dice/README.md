@@ -5,15 +5,24 @@ EIP-712-signed roll in `[1, sides]`. The point: nothing about how this server is
 anyone rig the outcome — the roll happens inside hardware even the operator can't see into, and
 the signature proves an unmodified copy of this code produced it.
 
-Its logic lives in the platform itself, at
-`enclave-server/src/nautilus-server/src/apps/dice/mod.rs` — this folder is only the *deploy
-config* `cobalt deploy` reads, the same shape as `examples/ping/`.
+Its logic is right here in this folder, in [`mod.rs`](./mod.rs) — a normal axum route handler,
+including the unit tests that check the EIP-712 struct hash is sensitive to every field. It's
+wired into the enclave server by a two-line, feature-gated `#[path]` include in
+`enclave-server/src/nautilus-server/src/lib.rs`; nothing about the app's logic lives anywhere
+else. `cobalt.json` and `env.json` alongside it are the *deploy config* `cobalt deploy` reads, the
+same shape as `examples/ping/`.
 
 ## Try it
 
+**Prerequisites**: this deploys into a real AWS Nitro Enclave on the maintainer's EC2 fleet — you
+need your own configured `aws-cli`, an EC2 key pair, a security group allowing the enclave's ports,
+and a funded Monad testnet key. See the root [README](../../README.md#running-the-whole-platform-yourself)
+for the full setup. If you just want to see the platform working without any of that, run
+`cobalt status examples/ping` instead — it reads live on-chain state and needs no AWS account.
+
 ```
-npm install -g mikelord007/Cobalt   # if you haven't already
-export PRIVATE_KEY=0x...            # a funded Monad testnet key
+npm install -g cobalt-tee   # if you haven't already
+export PRIVATE_KEY=0x...    # a funded Monad testnet key
 cobalt deploy examples/dice --secrets env.json
 ```
 
