@@ -7,6 +7,15 @@
 # it in instances.json, and hands back its IP just like the existing-instance path does.
 set -euo pipefail
 
+# Under Git Bash on Windows (MSYS2), any argv element that starts with "/" gets silently rewritten
+# into a Windows path before native (non-MSYS) executables like `aws` ever see it -- so
+# "/aws/service/..." below becomes "C:/Program Files/Git/aws/service/..." and every AWS-owned
+# public SSM parameter lookup fails with a confusing ParameterNotFound. Excluding just the "/aws/"
+# prefix (not a blanket MSYS_NO_PATHCONV=1) leaves MSYS's conversion of this script's OTHER path
+# arguments (SSH_KEY, USER_DATA_FILE) working correctly. A no-op everywhere else (real Linux/macOS
+# bash, or any non-MSYS shell) -- this env var simply isn't read there.
+export MSYS2_ARG_CONV_EXCL="${MSYS2_ARG_CONV_EXCL:-}/aws/"
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 INSTANCES_JSON="$SCRIPT_DIR/instances.json"
 
