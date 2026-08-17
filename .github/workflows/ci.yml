@@ -45,10 +45,16 @@ jobs:
         run: cobalt status examples/ping
 
   enclave-server:
+    # No windows-latest here, deliberately: aws-nitro-enclaves-nsm-api (a dependency of this
+    # crate) talks directly to a Linux kernel device via raw libc::ioctl/nix::unistd/
+    # std::os::unix, with no platform gating at all -- it's a driver for hardware that only
+    # exists inside a real AWS Nitro Enclave (Linux-only by nature), not a portability gap this
+    # crate can or should paper over. macOS is a Unix, so nix/libc resolve fine there and it's
+    # kept in the matrix; Windows has none of those APIs and can never build this crate.
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
