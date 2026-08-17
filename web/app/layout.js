@@ -16,6 +16,23 @@ export const metadata = {
   openGraph: {
     title: "Cobalt — TEEs on Monad, in one command",
     description: "Your code runs where no one can see it. Monad verifies which code ran.",
+    // Next's opengraph-image.png file convention (app/opengraph-image.png) auto-generates the
+    // og:image tag on its own -- no `images` entry needed here for that. type/siteName are set
+    // explicitly since Next doesn't default them, and a link unfurled without og:type falls back
+    // to generic "website" styling in some clients.
+    type: "website",
+    siteName: "Cobalt",
+  },
+  // Twitter Cards are a SEPARATE tag namespace from Open Graph -- Next does not derive
+  // twitter:* tags from the openGraph block, so this has to be declared explicitly or a tweet
+  // linking the site renders no card at all. `card: "summary_large_image"` matches the
+  // 1200x630 art in app/twitter-image.png (a copy of opengraph-image.png -- same 1.91:1 aspect
+  // ratio Twitter expects for this card type), which Next auto-attaches via that file's
+  // convention the same way it does for og:image.
+  twitter: {
+    card: "summary_large_image",
+    title: "Cobalt — TEEs on Monad, in one command",
+    description: "Your code runs where no one can see it. Monad verifies which code ran.",
   },
 };
 

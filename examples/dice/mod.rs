@@ -18,7 +18,7 @@ struct RollRequest { sides: u32, deadline: u64, nonce: String }
 struct RollResponse { sides: u32, result: u32, deadline: u64, nonce: String, signature: String }
 
 // Domain name "Cobalt-Dice", version "1". No dedicated on-chain consumer for this sample app --
-// CONSUMER_CONTRACT_ADDRESS is a placeholder (see cobalt-dice-app/README.md).
+// CONSUMER_CONTRACT_ADDRESS is a placeholder (see README.md, right here in this folder).
 const DICE_ROLL_TYPEHASH_PREIMAGE: &[u8] = b"DiceRoll(uint32 sides,uint32 result,uint64 deadline,bytes32 nonce)";
 
 async fn roll(State(state): State<Arc<DiceState>>, Json(req): Json<RollRequest>) -> Result<Json<RollResponse>, EnclaveError> {

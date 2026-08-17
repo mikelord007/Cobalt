@@ -10,6 +10,7 @@ export const metadata = {
     title: "Cobalt — TEEs on Monad, in one command",
     description: "Your code runs where no one can see it. Monad verifies which code ran.",
   },
+  alternates: { canonical: "/" },
 };
 
 /**

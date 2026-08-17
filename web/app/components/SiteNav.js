@@ -50,7 +50,7 @@ export default function SiteNav() {
     <header className="site-nav">
       <div className="wrap nav-inner">
         <Link className="logo" href="/">
-          <img src="/logo.png" alt="" width={22} height={22} />COBALT
+          <img src="/logo.png" alt="" width={28} height={28} />COBALT
         </Link>
         <div className="nav-actions">
           <button

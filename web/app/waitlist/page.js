@@ -4,6 +4,17 @@ import "./waitlist.css";
 export const metadata = {
   title: "Cobalt — Join the Waitlist",
   description: "Sign up to get notified when Cobalt opens up.",
+  openGraph: {
+    title: "Join the Cobalt waitlist",
+    description: "Get notified when Cobalt opens up.",
+  },
+  // Twitter Cards don't inherit from openGraph -- without its own `twitter` block, a route falls
+  // all the way back to the root layout's generic title/description instead of its own.
+  twitter: {
+    title: "Join the Cobalt waitlist",
+    description: "Get notified when Cobalt opens up.",
+  },
+  alternates: { canonical: "/waitlist" },
 };
 
 /**

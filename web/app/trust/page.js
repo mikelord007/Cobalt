@@ -4,6 +4,17 @@ export const metadata = {
   title: "Cobalt — Trust Model",
   description:
     "The full trust model behind Cobalt: what AWS Nitro Enclave attestation and on-chain verification guarantee, and what still rests on trusting the operator.",
+  openGraph: {
+    title: "Cobalt's trust model",
+    description: "What's cryptographically enforced, and what still requires trusting the operator.",
+  },
+  // Twitter Cards don't inherit from openGraph -- without its own `twitter` block, a route falls
+  // all the way back to the root layout's generic title/description instead of its own.
+  twitter: {
+    title: "Cobalt's trust model",
+    description: "What's cryptographically enforced, and what still requires trusting the operator.",
+  },
+  alternates: { canonical: "/trust" },
 };
 
 /**
