@@ -1,6 +1,6 @@
 {
   "name": "cobalt-tee",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Deploy app logic into a live AWS Nitro Enclave and verify it on Monad.",
   "bin": {
     "cobalt": "tools/cobalt.js"
