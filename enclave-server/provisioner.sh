@@ -88,6 +88,18 @@ launch_new_instance() {
   fi
   echo "==> security group: $sg_id" >&2
 
+  # aws-cli is a native (non-MSYS) executable, so a "file://" paramfile URI built from an
+  # MSYS/Git-Bash POSIX path (e.g. /c/Users/...) does NOT get auto-translated the way a bare
+  # leading-slash argument does (that's the opposite of the MSYS2_ARG_CONV_EXCL problem worked
+  # around above) -- aws-cli's paramfile loader just strips "file://" and hands the rest straight
+  # to Python's open(), which can't resolve a POSIX-style path on Windows. Route through cygpath
+  # (always present under Git Bash/MSYS) to get a real Windows path first; a no-op everywhere
+  # else, where $USER_DATA_FILE is already a path aws-cli can open directly.
+  local user_data_uri="file://$USER_DATA_FILE"
+  if command -v cygpath >/dev/null 2>&1; then
+    user_data_uri="file://$(cygpath -w "$USER_DATA_FILE")"
+  fi
+
   local tag_name="cobalt-enclave-$((current_count + 1))"
   echo "==> launching instance ($tag_name)" >&2
   local instance_id
@@ -100,7 +112,7 @@ launch_new_instance() {
     --security-group-ids "$sg_id" \
     --block-device-mappings '[{"DeviceName":"/dev/xvda","Ebs":{"VolumeSize":200}}]' \
     --enclave-options 'Enabled=true' \
-    --user-data "file://$USER_DATA_FILE" \
+    --user-data "$user_data_uri" \
     --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$tag_name}]" \
     --query "Instances[0].InstanceId" --output text)
   echo "==> instance id: $instance_id -- waiting for 'running' state" >&2
